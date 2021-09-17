@@ -1,12 +1,14 @@
 # Overview
 
-A template file and folder structure for a data analysis project/paper done with R/Rmarkdown/Github. 
+This is Morgan Taylor's MADA project repository.
+
+As of 09/17/21, examine 'Part1-Proposal.Rmd' under the 'products' folder for the current status of the project.
 
 # Pre-requisites
 
-This is a template for a data analysis project using R, Rmarkdown (and variants, e.g. bookdown), Github and a reference manager that can handle bibtex. It is also assumed that you have a word processor installed (e.g. MS Word or [LibreOffice](https://www.libreoffice.org/)). You need that software stack to make use of this template.
+This is a data analysis project using R, Rmarkdown (and variants, e.g. bookdown), Github and a reference manager that can handle bibtex. It is also assumed that you have a word processor installed (e.g. MS Word or [LibreOffice](https://www.libreoffice.org/)). You need that software stack to make use of this template.
 
-# Template structure
+# Structure
 
 * All data goes into the subfolders inside the `data` folder.
 * All code goes into the `code` folder or subfolders.
@@ -14,11 +16,8 @@ This is a template for a data analysis project using R, Rmarkdown (and variants,
 * All products (manuscripts, supplement, presentation slides, web apps, etc.) go into `products` subfolders.
 * See the various `readme.md` files in those folders for some more information.
 
-# Template content 
-
-The template comes with a few files that are meant as illustrative examples of the kinds of content you would place in the different folders. 
-
-* There is a simple, made-up dataset in the `raw_data` folder. 
+# Content 
+* The secondary proposal data are located in the `raw_data` folder. 
 * The `processing_code` folder contains a single R script which loads the raw data, performs a bit of cleaning, and saves the result in the `processed_data` folder.
 * The `analysis_code` folder contains an R script which loads the processed data, fits a simple model, and produces a figure and some numeric output, which is saved in the `results` folder.
 * The `products` folder contains an example `bibtex` and CSL style file for references. Those files are used by the example manuscript, poster and slides.

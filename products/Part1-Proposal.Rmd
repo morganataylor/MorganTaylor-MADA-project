@@ -1,0 +1,125 @@
+---
+title: "MADA Project - Part 1"
+author: Morgan Taylor
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(here) #to set paths
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+
+# Part 1: Proposal and Data Identification
+
+<br>
+
+# Primary Proposal: Predicting Outcomes for Burn Patients
+
+<br>
+
+## Relevant Background Information
+A nuclear catastrophe would generate an unprecedented volume of patients, with injuries resulting from the blast itself, the radiation emitted, and thermal burns. Of all the injury etiologies, burns may be the least understood and have the biggest resource constraints. As a result, prediction models characterizing burn outcomes for patients will better equip healthcare providers and other responders to manage these specific injuries. Logistic regression models have traditionally been employed to develop prediction scores for mortality of all burn patients (Halgas et al., 2018). However, other healthcare disciplines have increasingly transitioned to ML models, which are automatically generated and continually improved, potentially increasing predictive accuracy (Rojas et al., 2018; Taylor et al., 2016). Preliminary research suggests ML models using artificial neural network (ANN) models can predict burn patient mortality more accurately than commonly used prediction scores (Liu & Salinas, 2015), but there is evidence to suggest random forest models may be more advantageous in emergent applications (Taylor et al., 2016).
+
+<br>
+
+## Data Source
+American Burn Association (ABA) provides a dataset called the National Burn Repository (NBR), which includes patients treated or admitted to an ABA-verified burn hospital for the years 2009 - 2018. Each year, the ABA-verfied burn hospitals submit the appropriate patient records, and the NBR Committee reviews and validates the data. The dataset includes information regarding patient demographics, injury, injury severity, diagnoses, burn center admission, hospital procedure, outcome, and finance.
+
+<br>
+
+## Data Overview
+For the study period, there are 82,404 burn patients with a thermal etiology identified in the analysis. Full access to the data is waiting on approval from the legal consultant at the Office of Research for UGA and access to a HIPAA-compliant server. This access is expected soon, but there is a second proposal that follows in the event accessing the data takes longer than the timeline for this course allows.
+
+<br>
+
+## Questions of Interest
+There are two questions this study will endeavor to answer:
+
+1. What are the variables that significantly predict thermal burn patient mortality for individuals treated at an ABA-verified burn center?
+
+2. What are the variables that significantly predict thermal burn patient length of stay at an ABA-verified burn center?
+
+All of the predictors will be considered initially, if the infrastructure allows for it. A second iteration of the modeling may focus specifically on predictors that can be determined at initial patient presentation to increase applicability in emergent settings.
+
+<br>
+
+## Proposed Methods
+As logistic regression prediction models are already well established in the field, this project will utilize machine learning methods, or more specifically random forest and artificial neural network. A bootstrap sampling methodology will also be used with a 67%:33% sampling ratio to allow for model training and internal validation. The accuracy of the models will also be compared to the currently accepted Modified-Baux score.
+
+<br>
+<br>
+
+---
+
+<br>
+<br>
+
+# Secondary Proposal: Tracking Radiation from Chernobyl
+In the event that the data for the primary proposal does not make it through regulation protocols in time, the following section details a backup project using publicly available data.
+
+<br>
+
+## Relevant Background Information
+On April 26, 1989, a power failure at the number 4 reactor at the Chernobyl Nuclear Power Plant in the Soviet Union caused the worst nuclear disaster in history, resulting in an estimated $68 billion (adjusted for inflation) of damages. Due to the unprecedented nature of the event and the delay in notification of the general public, many questions still remain regarding the concentration and distribution of fallout radiation across several countries. The controversy surrounding the true impact of the event remains even more than thirty years later, so this study aims to better understand the distribution of the different radioisotopes from a nuclear reactor meltdown.
+
+<br>
+
+## Data Source
+A publicly available dataset identifying sampling locations from across several European countries can be accessed at the following link:
+
+https://www.kaggle.com/brsdincer/chernobyl-chemical-radiation-csv-country-data
+
+There are nine variables included: country abbreviation, country numerical code, sampling location (city or state), latitude of sampling location, longitude of sampling location, date of sampling, and concentration of three radioisotopes (Iodine 131, Caesium 134, and Ceasium 137). There are 2051 observations included, but not all observations have complete data.
+
+<br>
+
+## Data Overview
+As the data is publicly available for download, summary descriptions of the data can be done. Radioisotopes are reported in the concentration of rad/m^3.
+
+```{r}
+#Import data
+#define path to data
+data_location <- here::here("data","raw_data","Chernobyl_ Chemical_Radiation.csv")
+
+#load data. 
+rawdata <- utils::read.csv(data_location)
+
+#rename variable columns
+processeddata <- rawdata
+colnames(processeddata) <- c("Country-Abbrev", "Country-Code", "Sample-Location", "Longitude", "Latitude", "Date", "Iodine131", "Caesium134", "Caesium137")
+
+#convert radioisotope variables to numeric variables
+processeddata$Caesium134 <- as.numeric(processeddata$Caesium134)
+processeddata$Caesium137 <- as.numeric(processeddata$Caesium137)
+processeddata$Iodine131 <- as.numeric(processeddata$Iodine131)
+#NAs introduced by coercion with this coding - will require more thorough cleaning for actual analysis
+
+#overview
+utils::str(processeddata)
+
+#summary
+summary(processeddata)
+```
+
+<br>
+
+## Questions of Interest
+There are three primary questions this study will endeavor to answer:
+
+1. Is there a significant reduction in radioisotope concentration captured within the study period? If so, do the results represent known half-life decomposition for each radioisotope type?
+
+2. What is the geospatial dispersion of fallout radiation captured through this publicly available sampling dataset? 
+
+3. Does the geospatial dispersion reported in the dataset match commonly accepted models for nuclear reactor meltdown? (Pending approval)
+
+<br>
+
+## Proposed Methods
+The first portion of this analysis will involve fitting the data to a nuclear half-life decay model. Further research is required to understand how to account for potential interaction between the three isotopes during the process of radioactive decay. 
+
+The second research question will involve an in-depth exploration of geospatial modeling capabilities of R. The latitude and longitude values will be used to identify the sampling locations on a map, and the concentration of each radioisotope will be the values of interest.
+
+The final research question hinges upon approval from the appropriate authorities regarding the modeling software and whether the methods and results can be publicly available. However, if this is allowed, the two geospatial files can be overlayed and k-nearest methods could potentially be used to determine discrepancies between the two models.
+
