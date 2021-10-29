@@ -1,66 +1,146 @@
-###############################
-# processing script
-#
+######################################
+#Processing Script
+######################################
+
 #this script loads the raw data, processes and cleans it 
 #and saves it as Rds file in the processed_data folder
 
-#load needed packages. make sure they are installed.
-library(readxl) #for loading Excel files
-library(dplyr) #for data processing
+######################################
+#Libraries and Options
+######################################
+
+#load needed packages
 library(here) #to set paths
+library(tidyverse) #for data processing
+library(geosphere) #for distance calculations
 
-#path to data
-#note the use of the here() package and not absolute paths
-data_location <- here::here("data","raw_data","exampledata.xlsx")
+##Import data
+#define path to data
+data_location <- here::here("data","raw_data","Chernobyl_ Chemical_Radiation.csv")
 
-#load data. 
-#note that for functions that come from specific packages (instead of base R)
-# I often specify both package and function like so
-#package::function() that's not required one could just call the function
-#specifying the package makes it clearer where the function "lives",
-#but it adds typing. You can do it either way.
-rawdata <- readxl::read_excel(data_location)
+#load data
+rawdata <- utils::read.csv(data_location)
 
-#take a look at the data
-dplyr::glimpse(rawdata)
+######################################
+#Cleaning and Feature Engineering
+######################################
 
-#dataset is so small, we can print it to the screen.
-#that is often not possible.
-print(rawdata)
+#overview
+utils::str(rawdata)
 
-# looks like we have measurements for height (in centimeters) and weight (in kilogram)
+#rename variable columns
+processeddata <- rawdata
+colnames(processeddata) <- c("Country-Abbrev", "Country-Code", "Sample.Location", "Longitude", "Latitude", "Date", "Iodine131", "Caesium134", "Caesium137")
 
-# there are some problems with the data: 
-# There is an entry which says "sixty" instead of a number. 
-# Does that mean it should be a numeric 60? It somehow doesn't make
-# sense since the weight is 60kg, which can't happen for a 60cm person (a baby)
-# Since we don't know how to fix this, we need to remove the person.
-# This "sixty" entry also turned all Height entries into characters instead of numeric.
-# We need to fix that too.
-# Then there is one person with a height of 6. 
-# that could be a typo, or someone mistakenly entered their height in feet.
-# Since we unfortunately don't know, we'll have to remove this person.
-# similarly, there is a person with weight of 7000, which is impossible,
-# and one person with missing weight.
-# to be able to analyze the data, we'll remove those 5 individuals
+#spell out country names in new variable
+processeddata$Country.Name <- dplyr::recode(processeddata$`Country-Abbrev`,
+                                              AU = "Austria",
+                                              BE = "Belgium",
+                                              CH = "Switzerland",
+                                              CZ = "Czechoslovakia",
+                                              DE = "Germany",
+                                              ES = "Spain", 
+                                              F = "France",
+                                              FI = "Finland",
+                                              GR = "Greece",
+                                              HU = "Hungary",
+                                              IR = "Ireland",
+                                              IT = "Italy",
+                                              NL = "Netherlands",
+                                              NO = "Norway",
+                                              SE = "Sweden",
+                                              UK = "United Kingdom")
 
-# this is one way of doing it. Note that if the data gets updated, 
-# we need to decide if the thresholds are ok (newborns could be <50)
+#convert radioisotope variables to numeric variables
+processeddata$Caesium134 <- as.numeric(processeddata$Caesium134)
+processeddata$Caesium137 <- as.numeric(processeddata$Caesium137)
+processeddata$Iodine131 <- as.numeric(processeddata$Iodine131)
+#NAs introduced by coercion expected due to missing observations
 
-processeddata <- rawdata %>% dplyr::filter( Height != "sixty" ) %>% 
-                             dplyr::mutate(Height = as.numeric(Height)) %>% 
-                             dplyr::filter(Height > 50 & Weight < 1000)
+#convert Date column to date class
+processeddata$Date <- as.Date(processeddata$Date, '%y/%m/%d')
 
-# save data as RDS
-# I suggest you save your processed and cleaned data as RDS or RDA/Rdata files. 
-# This preserves coding like factors, characters, numeric, etc. 
-# If you save as CSV, that information would get lost.
-# See here for some suggestions on how to store your processed data:
-# http://www.sthda.com/english/wiki/saving-data-into-r-data-format-rds-and-rdata
 
-# location to save file
+#first create variable for chernobyl event date
+#Chernobyl occurred on Saturday 26 April 1986
+chernobyl <- "04/26/1986"
+processeddata$incidentdate <- as.Date(chernobyl,"%m/%d/%Y")
+
+#create new variable for days since event
+for (i in seq(nrow(processeddata))) {
+  processeddata$Day[i] <- difftime(processeddata$Date[i], processeddata$incidentdate[i], units = "days")
+}
+
+#first create variables for Chernobyl longitude and latitude
+chernobyllat <- 51.387
+chernobyllong <- 30.093
+
+#create new variable to calculate distance between chernobyl and sample location
+#use distGeo and default WGS84 ellipsoid
+#divide by 10^3 to convert from m to km
+for (i in seq(nrow(processeddata))) {
+  processeddata$Distance[i] <- (geosphere::distGeo(c(chernobyllong, chernobyllat),
+                                              c(processeddata$Longitude[i], processeddata$Latitude[i]))/(10^3))
+}
+
+#clean up df by getting rid of variables no longer needed
+#drop the following: country abbreviation, country code, sample date, incident date
+processeddata <- processeddata[,-c(1, 2, 6, 11)]
+
+#rearrange column order
+processeddata <- processeddata[, c(1, 7, 2, 3, 9, 8, 4, 5, 6)]
+
+#summary of cleaned data
+summary(processeddata)
+#based on this data structure, we don't know if NAs are reasonable (due to fallout)
+
+#omit na's if no concentration recorder for any of the radioisotopes
+processeddata_filtered <- processeddata %>%
+                              dplyr::filter(!if_all(c(Iodine131, Caesium134, Caesium137), is.na))
+#only removes 20 observations so definitely within reason
+
+#location to save long format
 save_data_location <- here::here("data","processed_data","processeddata.rds")
 
-saveRDS(processeddata, file = save_data_location)
+#save sample locations data
+saveRDS(processeddata_filtered, file = save_data_location)
 
+######################################
+# Conversion to Long Format
+######################################
+#convert to long format
+processeddata_long <- processeddata_filtered %>%
+  tidyr::gather("Radioisotope",
+                "Concentration",
+                7:9)
+
+#filter NAs here too
+#have to be careful about the interpretation when using two different datasets
+processeddata_long_filtered <- processeddata_long %>%
+                                  dplyr::filter(!is.na(Concentration))
+(6093-5316)/6093
+#less than 15% of long dataset so within reason to filter
+
+#location to save long format
+long_data_location <- here::here("data","processed_data","processeddatalong.rds")
+
+#save sample locations data
+saveRDS(processeddata_long_filtered, file = long_data_location)
+
+######################################
+# Sample Locations Subset
+######################################
+#create a df for sample locations
+#include: sample location name, country, latitude, longitude, distance
+sample_locations <- processeddata_filtered %>% dplyr::distinct(Sample.Location,
+                                                                Country.Name,
+                                                                Longitude,
+                                                                Latitude,
+                                                                Distance)
+
+#location to save sample locations file
+sample_data_location <- here::here("data","processed_data","samplelocations.rds")
+
+#save sample locations data
+saveRDS(sample_locations, file = sample_data_location)
 

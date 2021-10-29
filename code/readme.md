@@ -1,10 +1,31 @@
-Place your various R or Rmd scripts in the appropriate folders.
+This folder stores all of the scripts that process and analyze the data.
 
-You can either have fewer large scripts, or multiple scripts that do only specific actions. Those can be R scripts or Rmd files. In either case, document the scripts and what goes on in them so well that someone else (including future you) can easily figure out what is happening.
+# Processing
 
-The scripts should load the appropriate data (e.g. raw or processed), perform actions, and save results (e.g. processed data, figures, computed values) in the appropriate folders. Document somewhere what inputs each script takes and where output is placed. 
+The `processing_code` folder contains one script: `processingscript.R` which does the following:
+* loads the raw data
+* cleans the labels and formatting of the data
+* conducts some feature engineering to create distance from Chernobyl and country name
+* addresses missing data
+* converts the data from wide format into long format for the radioisotopes measured
+* creates a subset of the unique sampling locations
 
-If scripts need to be run in a specific order, document this. Either as comments in the script, or in a separate text file such as this. Ideally of course in both locations.
+# Analysis
 
+The `analysis_code` folder contains three scripts:
 
-Depending on your specific project, you might want to have further sub-folders.
+## Exploratory data analysis: `edascript.R`
+This script conducts an  exploratory data analysis of the procesed data and saves the outputs in the `results` folder. In particular, it examines
+* primary outcome(s) of interest: radisotope concentration (I-131, Cs-134, Cs-137)
+* primary predictor of interest: days since Chernobyl meltdown
+* other relevant variables including country, distance from Chernobyl in km, and sampling location
+
+## Half-life decomposition analysis: `halflifescript.R`
+This script utilizes the `radsafer` package to calculate the predicted half-life decomposition for each radioisotope in question. 
+
+As of 10/29/2021, the next step in the analysis is to examine the predicted concentrations in relation to the measured concentrations.
+
+## Mapping analysis: `mapscript.R`
+This script plots the sample locations on a map in relation to the Chernobyl plant. 
+
+As of 10/29/2021: Pending approval from Google API, this script will also plot the concentrations of the radioisotopes in a gradient fashion on a Google Maps underlay.
