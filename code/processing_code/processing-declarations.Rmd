@@ -1,0 +1,73 @@
+---
+title: "Data Processing: Disaster Declaration Summaries"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the raw data and performs some cleaning as well as feature engineering. The raw data comes from [the OpenFEMA Dataset website](https://www.fema.gov/openfema-data-page/disaster-declarations-summaries-v2).
+
+<br>
+
+Overall, processing this dataset involves the following elements:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Summarization of key variables for each disaster declaration and state
+* Feature engineering to create duration of incident and response
+* Saving the processed dataset as an .rds
+
+<br>
+
+To keep track of processing changes, each iteration of processed data will be named `missions_#`. 
+
+<br>
+
+Ultimately, this processed dataset will be joined to the Disaster Declaration Summaries processed dataset for the analysis.
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for path setting
+* tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
+* skimr: for data summarization
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #to set paths
+library(tidyverse) #for data processing
+library(skimr) #for data summarization
+```
+
+---
+
+## Load Raw Data
+Load the raw data downloaded from provided hyerlink.
+```{r load data}
+#path to data
+#note the use of the here() package and not absolute paths
+data_location_dss <- here::here("data", "raw_data", "DisasterDeclarationsSummaries.csv")
+
+#load data
+declarations_raw <- utils::read.csv(data_location_dss, na.strings = c("", "NA"))
+```
+
+---
+
+## Raw Data Overview
+Examine the summary and structure of the raw data.
+```{r raw data overview}
+#summary using base R
+summary(declarations_raw)
+
+#summary and structure using the skimr package
+skimr::skim(declarations_raw)
+```

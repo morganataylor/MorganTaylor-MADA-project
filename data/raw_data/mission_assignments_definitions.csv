@@ -1,0 +1,25 @@
+Name,Title,Type,Description
+maId,ID,string,"Identifier for request, used to aggregate funding across multiple days"
+amendmentNumber,Amendment Number,number,Obligation requests may be modified to adjust or add funds. This number identifies those amendments. The value is 0 if there are no amendments.
+city,City,string,Place of performance if available
+stateorTribe,State or Tribe,string,"The name or phrase describing the U.S. state, district, territory, or Tribal government"
+zip,Zip,string,Zip code for the place of performance if available
+disasterNumber,Disaster Number,number,"Sequentially assigned number used to designate an event or incident declared as a disaster. For more information on the disaster process, https://www.fema.gov/disasters/how-declared"
+declarationType,Declaration Type,string,"Two character code that defines if this is a major disaster (DR), fire management (FM) or emergency declaration (ER). For more information on the disaster process, please visit: https://www.fema.gov/disasters/how-declared"
+agency,Agency,string,Name of the entity requesting assistance
+assistanceRequested,Assistance Requested,string,Additional information about the assistance request
+statementOfWork,SOW,string,Description of the requested assistance
+disasterDescription,Disaster Description,string,"Type of incident (for example, Hurricane or Earthquake)"
+authority,Authority,string,Authority under which Mission Assignments (MA) was issued (All Mission Assignments are issued under the Stafford Act)
+dateRequested,Date Requested,date,Date a State or Tribe requested assistance
+dateObligated,Date Obligated,date,Date the Mission Assignment was obligated
+stateCostSharePct,State Cost Share Percent,number,Percentage of the cost for which the state or tribal government is responsible
+federalCostSharePct,Federal Cost Share Percent,number,Percentage of the cost for which FEMA is responsible; computed as 1.0-StateCostShare
+stateCostShareAmt,State Cost Share Amount,number,Dollar amount of the cost for which the state or tribal government is responsible
+federalCostShareAmt,Federal Cost Share Amount,number,Dollar amount of the cost for which FEMA is responsible
+requestedAmount,Requested Amount,number,"Total cost in dollars, as requested by state or tribal government."
+obligationAmount,Obligation Amount,number,Total dollars amount obligated
+projectedCompletionDate,Projected Completion Date,date,Estimated end of the mission. Subject to revision.
+hash,hash,string,MD5 Hash of the fields and values of the record
+lastRefresh,Last Refresh,date,Date the record was last updated in the API data store
+id,ID,number,Unique ID assigned to the record

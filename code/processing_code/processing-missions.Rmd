@@ -1,0 +1,200 @@
+---
+title: "Data Processing: Mission Assignments"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the raw data and performs some cleaning as well as feature engineering. The raw data comes from [the OpenFEMA Dataset website](https://www.fema.gov/openfema-data-page/mission-assignments-v1).
+
+<br>
+
+Overall, processing this dataset involves the following elements:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Summarization of mission costs for each state and disaster declaration
+* Feature engineering to create cost share proportions
+* Saving the processed dataset as an .rds
+
+<br>
+
+To keep track of processing changes, each iteration of processed data will be named `missions_#`. 
+
+<br>
+
+Ultimately, this processed dataset will be joined to the Disaster Declaration Summaries processed dataset for the analysis.
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for path setting
+* tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
+* skimr: for data summarization
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #to set paths
+library(tidyverse) #for data processing
+library(skimr) #for data summarization
+```
+
+---
+
+## Load Raw Data
+Load the raw data downloaded from provided hyerlink.
+```{r load data}
+#path to data
+#note the use of the here() package and not absolute paths
+data_location_ma <- here::here("data", "raw_data", "MissionAssignments.csv")
+
+#load data
+missions_raw <- utils::read.csv(data_location_ma, na.strings = c("", "NA"))
+```
+
+---
+
+## Raw Data Overview
+Examine the summary and structure of the raw data.
+```{r raw data overview}
+#summary using base R
+summary(missions_raw)
+
+#summary and structure using the skimr package
+skimr::skim(missions_raw)
+```
+There are 22 variables in the raw dataset and 21,472 observations. However, there are multiple observations for each disaster declaration and state, as they are listed by each request for assistance or ammendment for funding. Time to clean!
+
+---
+
+## Data Cleaning and Wrangling
+For the purposes of this project, we only need detail at the disaster declaration number and state level. So we will need to summarize, but first let's remove the variables that are too granular for this analysis. 
+```{r variable list}
+#print list of variables
+colnames(missions_raw)
+```
+
+---
+
+Before we get rid of any variables, we need to confirm the date range of this dataset to be able to filter the `DisasterDeclarationsSummaries.csv` dataset.
+```{r date range}
+#first need to hide na values of `dateRquested` variable
+dates <- na.omit(missions_raw$dateRequested)
+
+#first date of requested assistance
+min(dates)
+
+#last date of requested assistance
+max(dates)
+```
+So, we know this dataset ranges from February 2, 2012 to November 10, 2021.
+
+---
+
+Now we can remove variables. We only need to keep the following:
+
+* stateorTribe
+* disasterNumber
+* agency
+* stateCostSharePct
+* federalCostSharePct
+* requestedAmount
+* obligationAmount
+
+```{r}
+#select target variables
+missions_1 <- missions_raw %>%
+                dplyr::select(stateorTribe, 
+                              disasterNumber, 
+                              agency,
+                              stateCostSharePct,
+                              federalCostSharePct,
+                              requestedAmount, 
+                              obligationAmount)
+```
+We now have a dataset with 7 variables and 21,472 variables
+
+---
+
+Before we can sum the rows, we need to address the missing values for the `stateorTribe` variable. Based on the structure of the data, we can use the `fill` function from `tidyr` to write the value based on the previous row.
+```{r state name fill}
+#fill in missing values for state or tribe
+missions_2 <- missions_1 %>%
+                tidyr::fill(stateorTribe)
+```
+
+---
+
+Now, we can sum the rows to determine the total cost by disaster declaration number, state, and agency that provided the assistance.
+```{r row sums}
+#sum rows
+missions_3 <- missions_2 %>%
+                dplyr::group_by(disasterNumber, stateorTribe, agency) %>%
+                dplyr::summarize(StateCSProp = sum(stateCostSharePct),
+                                 FEMACSProp = sum(federalCostSharePct),
+                                 RequestedAmt = sum(requestedAmount),
+                                 ObligatedAmt = sum(obligationAmount))
+```
+
+---
+
+The next step is to determine the requested and obligated cost share for state governments and FEMA. We will do this first by calculating the cost share percentages for state government and FEMA by agency and disaster declaration, and then we will apply the percentages to the requested and obligated funding amounts.
+```{r cost share}
+#create variable for state government and FEMA cost share percentages
+missions_4 <- missions_3 %>%
+                dplyr::mutate(StateCSPct = StateCSProp / (FEMACSProp + StateCSProp),
+                              FEMACSPct = FEMACSProp / (FEMACSProp + StateCSProp)) %>%
+                subset(select = -c(StateCSProp, FEMACSProp))
+
+#apply cost share percentages to requested and obligated funding
+#also create a variable that represents the total percent for total funding requested and/or obligated (e.g. 1)
+missions_5 <- missions_4 %>%
+                dplyr::mutate(StateReqAmt = RequestedAmt * StateCSPct,
+                              FEMAReqAmt = RequestedAmt * FEMACSPct,
+                              StateOblAmt = ObligatedAmt * StateCSPct,
+                              FEMAOblAmt = ObligatedAmt * FEMACSPct,
+                              TotalCSPct = StateCSPct + FEMACSPct)
+```
+
+---
+
+Currently, the dataset is a mixture of wide and long formatting. To integrate effectively with the Disaster Declaration Summaries dataframe, we need to convert it completely to long formatting.
+```{r long format}
+#the gather function works positionally, so first reorder the columns to be in the right order
+#essentially grouping columns by type of value (e.g. cost share percent, requested funding, obligated funding)
+missions_6 <- missions_5[, c(1:3, 12, 6, 7, 4, 8, 9, 5, 10, 11)]
+
+#trying piping several gather functions
+missions_7 <- missions_6 %>%
+                tidyr::gather(PayOrg, CostSharePct, TotalCSPct:FEMACSPct) %>%
+                tidyr::gather(PayOrg2, ReqAmt, RequestedAmt:FEMAReqAmt) %>%
+                tidyr::gather(PayOrg3, OblAmt, ObligatedAmt:FEMAOblAmt) %>%
+                subset(select = -c(PayOrg2, PayOrg3))
+
+#relabel values of `PayOrg`
+missions_7$PayOrg[missions_7$PayOrg == "TotalCSPct"] <- "Total"
+missions_7$PayOrg[missions_7$PayOrg == "StateCSPct"] <- "State"
+missions_7$PayOrg[missions_7$PayOrg == "FEMACSPct"] <- "FEMA"
+```
+
+---
+
+We now have our processed dataset for mission assignments! Let's save it into the `processed_data` folder.
+```{r save processed data}
+#create a mirror set for documentation purposes
+missions_processed <- missions_7
+
+#location to save processed file
+missions_data_location <- here::here("data","processed_data","missionsprocessed.rds")
+
+#save as an RDS
+saveRDS(missions_processed, file = missions_data_location)
+```
