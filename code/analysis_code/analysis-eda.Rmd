@@ -1,0 +1,110 @@
+---
+title: "Analysis: Exploratory Data Analysis"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the processed data and conducts the exploratory data analysis. Follow the processing markdowns in the `processing_code` folder to generate the processed data.
+
+<br>
+
+This analysis examines the predictors of allocation of FEMA funds during disaster declarations. In terms of the datasets, the two outcomes of interest are Requested Amount (`ReqAmt`) and Obligated Amount (`OblAmt`).
+
+<br>
+
+For each variable, the following steps will be completed:
+
+1. Produce and print some numerical output (e.g. table, summary statistics)
+2. Create a histogram or density plot (continuous variables only)
+3. Scatterplot, boxplot, or other similar plots against the main outcome of interest
+4. Any other exploration steps that may be useful.
+
+The steps will be numbered for each variable as specified above.
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for path setting
+* tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
+* skimr: for data summarization
+* summarytools: for overall dataframe summary
+* ggplot2: for plotting data
+* car: for creating QQ plots
+* gt: for creating tables for summary statistics / other numerical outputs
+* scales: for percent calculation
+
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #to set paths
+library(tidyverse) #for data processing
+library(skimr) #for data summarization
+library(summarytools) #for overall dataframe summary
+library(ggplot2) #for plotting data
+library(car) #for creating QQ plots
+library(gt) #for creating tables
+library(scales) #for percent calculation
+
+#global environment options
+# formatting for script to avoid scientific notation output
+options(scipen=999)
+
+# globally set theme for ggplots
+ggplot2::theme_set(theme_classic())
+```
+
+---
+
+## Load Processed Data
+Load the data generated from the markdowns in the `processing_code` folder.
+```{r load data}
+#define file path
+data_location <- here::here("data", "processed_data", "combinedprocessed.rds")
+
+#load data
+EDAdata <- readRDS(data_location)
+```
+
+---
+
+## Data Overview
+To better understand the data, let's use `summarytools` to better visualize the data.
+```{r data overview}
+summarytools::dfSummary(EDAdata)
+```
+
+---
+
+## Outcome of Interest: Requested FEMA Funds
+The first of two primary outcomes of interest is the total amount of funds the state requested from FEMA for a disaster declaration.
+```{r}
+#summary statistics
+base::summary(EDAdata$ReqAmt)
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = ReqAmt)) +
+  geom_density()
+
+#boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = ReqAmt)) +
+  geom_boxplot()
+
+#crop to $1M
+ggplot2::ggplot(data = EDAdata, aes(y = ReqAmt)) +
+  geom_boxplot() +
+  ylim(0, 1000000)
+
+##QQ plot
+car::qqPlot(EDAdata$ReqAmt)
+```
+
+## Outcome of Interest: Obligated FEMA Funds

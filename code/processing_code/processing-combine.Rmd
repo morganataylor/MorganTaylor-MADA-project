@@ -1,0 +1,108 @@
+---
+title: "Data Processing: Creating the Combined Dataframe"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the processed data from disaster declarations and mission assignments and combines them into one dataframe for analysis.
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for path setting
+* tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #to set paths
+library(tidyverse) #for data processing
+```
+
+---
+
+## Load Data
+Load the processed data from the `processed_data` folder.
+```{r load data}
+#define path to processed population data
+data_location1 <- here::here("data", "processed_data", "declarationsprocessed.rds")
+data_location2 <- here::here("data", "processed_data", "missionsprocessed.rds")
+data_location3 <- here::here("data", "raw_data", "DisasterDeclarationsSummaries.csv")
+
+#load data
+declarations <- readRDS(data_location1)
+missions <- readRDS(data_location2)
+raw_decs <- utils::read.csv(data_location3, na.strings = c("", "NA"))
+```
+
+---
+
+## Individual Dataset Overview
+Examine the summary and structure of the individual datasets.
+```{r dataset overview}
+#summary using base R
+summary(declarations)
+summary(missions)
+```
+
+---
+
+## Joining the Datasets
+The two datasets could be joined by state or declaration number. 
+```{r}
+# #first change name of states column in missions df
+# names(missions)[names(missions) == 'stateorTribe'] <- 'state'
+# 
+# #create df with states and declaration numbers from each df
+# missions_nums <- as.data.frame(table(missions$state, missions$disasterNumber))
+# declarations_nums <- as.data.frame(table(declarations$state, declarations$disasterNumber))
+
+#we want a full join to keep all of the data
+combined <- dplyr::full_join(declarations, missions, by = 'disasterNumber')
+```
+
+---
+
+It's not a flawless join, so let's do some investigation to see where there might be gaps.
+```{r}
+summary(combined)
+
+#filter the rows that aren't in declarations data but are in missions data
+missing_nums <- combined %>% 
+                  filter(is.na(state)) %>%
+                  select(disasterNumber)
+
+#unique list of missing declarations
+missing_declarations <- unique(missing_nums)
+
+#check missing declarations in raw declarations
+decs_check <- raw_decs %>%
+                dplyr::filter(disasterNumber %in% missing_declarations$disasterNumber)
+
+#the missing values represent declarations in territories, not states
+#for now, remove - we can always come back and adjust as needed
+combined_processed <- combined %>%
+                        dplyr::filter(!is.na(IncidentYear))
+```
+
+---
+
+## Save Processed Data
+
+Let's save it into the `processed_data` folder.
+```{r save processed data}
+
+#location to save processed file
+combined_data_location <- here::here("data","processed_data","combinedprocessed.rds")
+
+#save as an RDS
+saveRDS(combined_processed, file = combined_data_location)
+```

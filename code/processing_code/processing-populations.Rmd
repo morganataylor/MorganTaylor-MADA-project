@@ -1,0 +1,220 @@
+---
+title: "Data Processing: Population Estimates"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the raw data and performs some cleaning as well as feature engineering. The raw data comes from  [the U.S> Department of Agriculture Economic Research Service](https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/).
+
+<br>
+
+Overall, processing this dataset involves the following elements:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Feature engineering to determine number of counties per state
+* Saving the processed dataset as an .rds
+
+<br>
+
+To keep track of processing changes, each iteration of processed data will be named `pops_#`. The final processed dataset will be `populations_processed`.
+
+<br>
+
+Ultimately, this processed dataset will be joined to the Disaster Declaration Summaries processed dataset for the analysis.
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for path setting
+* tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
+* skimr: for data summarization
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #to set paths
+library(tidyverse) #for data processing
+library(skimr) #for data summarization
+library(lubridate) #for date wrangling
+```
+
+---
+
+## Load Raw Data
+Load the raw data downloaded from provided hyerlink.
+```{r load data}
+#path to data
+#note the use of the here() package and not absolute paths
+data_location_pops <- here::here("data", "raw_data", "PopulationEstimates.csv")
+
+#load data
+populations_raw <- utils::read.csv(data_location_pops, na.strings = c("", "NA"))
+```
+
+---
+
+## Raw Data Overview
+Examine the summary and structure of the raw data.
+```{r raw data overview}
+#summary using base R
+summary(populations_raw)
+
+#summary and structure using the skimr package
+skimr::skim(populations_raw)
+```
+There are 14 variables and 3,283 observations. The data is structured in such a way that it includes totals for the states as well as for each county - time to clean!
+
+---
+
+## Data Cleaning and Wrangling
+First, let's remove the unimportant variables.
+```{r variable list}
+#print list of variables
+colnames(populations_raw)
+```
+
+We only want to keep the following variables:
+
+* FIPStxt
+* State
+* Area.name
+* Population.2020
+```{r variable selection}
+#select key variables
+pops_1 <- populations_raw %>%
+                dplyr::select(FIPStxt,
+                              State,
+                              Area.name,
+                              Population.2020)
+```
+We will eventually get rid of FIPStxt, but we need it to separate state and county level data.
+
+---
+
+To create the state-level subset, filter the rows based on values of FIPStxt.
+```{r state filter}
+#create a vector of FIPStxt values
+state_fipstxt  <- c("01000",
+                    "02000",
+                    "03000",
+                    "04000",
+                    "05000",
+                    "06000",
+                    "07000",
+                    "08000",
+                    "09000",
+                    "10000",
+                    "11000",
+                    "12000",
+                    "13000",
+                    "14000",
+                    "15000",
+                    "16000",
+                    "17000",
+                    "18000",
+                    "19000",
+                    "20000",
+                    "21000",
+                    "22000",
+                    "23000",
+                    "25000",
+                    "26000",
+                    "27000",
+                    "28000",
+                    "29000",
+                    "30000",
+                    "31000",
+                    "32000",
+                    "33000",
+                    "34000",
+                    "35000",
+                    "36000",
+                    "37000",
+                    "38000",
+                    "39000",
+                    "40000",
+                    "41000",
+                    "42000",
+                    "43000",
+                    "44000",
+                    "45000",
+                    "46000",
+                    "47000",
+                    "48000",
+                    "49000",
+                    "50000",
+                    "51000",
+                    "52000",
+                    "53000",
+                    "54000",
+                    "55000",
+                    "56000",
+                    "60000",
+                    "66000",
+                    "69000",
+                    "72000",
+                    "78000")
+
+#subset based on which ones are in this vector
+#then drop FIPStxt and Area.name
+pops_states <- pops_1 %>%
+                dplyr::filter(FIPStxt %in% state_fipstxt) %>%
+                subset(select = -c(FIPStxt,
+                                   Area.name))
+```
+Now we have a dataframe with state abbreviations and population estimates.
+
+---
+
+The last step is to count the number of counties per state and add it to the state dataframe.
+```{r counties count}
+#subset pops_1 data that doesn't include states
+#remove first row too since it's the entire US
+pops_2 <- pops_1 %>%
+            dplyr::filter(! FIPStxt %in% state_fipstxt) %>%
+            dplyr::slice(-1)
+
+#count the number of occurrences of each state (which represents the number of counties)
+pops_3 <- as.data.frame(table(pops_2$State))
+
+#relabel columns
+names(pops_3) <- c("State", "Counties")
+
+#combine with states dataframe
+pops_processed <- merge(pops_states, pops_3, by="State")
+```
+
+---
+
+## Processed Data Overview
+We have our processed dataset! Let's take a look at the overview to see how it changed.
+```{r processed data overview}
+#summary using base R
+summary(pops_processed)
+
+#summary and structure using the skimr package
+skimr::skim(pops_processed)
+```
+
+---
+
+## Save Processed Data
+
+We now have our processed dataset for state populations and counties! Let's save it into the `processed_data` folder.
+```{r save processed data}
+
+#location to save processed file
+pops_data_location <- here::here("data","processed_data","popsprocessed.rds")
+
+#save as an RDS
+saveRDS(pops_processed, file = pops_data_location)
+```

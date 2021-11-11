@@ -24,7 +24,7 @@ Overall, processing this dataset involves the following elements:
 
 <br>
 
-To keep track of processing changes, each iteration of processed data will be named `missions_#`. 
+To keep track of processing changes, each iteration of processed data will be named `missions_#`. The final processed dataset will be `missions_processed`.
 
 <br>
 
@@ -71,7 +71,7 @@ summary(missions_raw)
 #summary and structure using the skimr package
 skimr::skim(missions_raw)
 ```
-There are 22 variables in the raw dataset and 21,472 observations. However, there are multiple observations for each disaster declaration and state, as they are listed by each request for assistance or ammendment for funding. Time to clean!
+There are 22 variables in the raw dataset and 21,472 observations. However, there are multiple observations for each disaster declaration and state, as they are listed by each request for assistance or amendment for funding. Time to clean!
 
 ---
 
@@ -187,10 +187,57 @@ missions_7$PayOrg[missions_7$PayOrg == "FEMACSPct"] <- "FEMA"
 
 ---
 
-We now have our processed dataset for mission assignments! Let's save it into the `processed_data` folder.
-```{r save processed data}
+The last step is to make the formatting of state names consistent.
+```{r state names}
+unique(missions_7$stateorTribe)
+
+#there's probably a more efficient way to do this, but fix all of the non-two letter abbreviations
+missions_7$stateorTribe[missions_7$stateorTribe == "Virgin Islands"] <- "VI"
+missions_7$stateorTribe[missions_7$stateorTribe == "Seminole Tribe of Florida"] <- "FL"
+missions_7$stateorTribe[missions_7$stateorTribe == "Ponca Tribe of Nebraska"] <- "NE"
+missions_7$stateorTribe[missions_7$stateorTribe == "MUSCOGEE (CREEK) NATION"] <- "OK"
+missions_7$stateorTribe[missions_7$stateorTribe == "Standing Rock Sioux Tribe"] <- "ND"
+missions_7$stateorTribe[missions_7$stateorTribe == "Santa Clara Pueblo"] <- "NM"
+missions_7$stateorTribe[missions_7$stateorTribe == "Pueblo of Acoma"] <- "NM"
+missions_7$stateorTribe[missions_7$stateorTribe == "District of Columbia (DC)"] <- "DC"
+missions_7$stateorTribe[missions_7$stateorTribe == "Puerto Rico"] <- "PR"
+missions_7$stateorTribe[missions_7$stateorTribe == "American Samoa"] <- "AS"
+missions_7$stateorTribe[missions_7$stateorTribe == "Northern Mariana Islands"] <- "MP"
+missions_7$stateorTribe[missions_7$stateorTribe == "Choctaw Nation"] <- "OK"
+missions_7$stateorTribe[missions_7$stateorTribe == "POTAWATOMI NATION"] <- "OK"
+missions_7$stateorTribe[missions_7$stateorTribe == "Oglala Sioux Tribe of the Pine Ridge Reservation"] <- "SD"
+```
+
+---
+
+After integrating the data, I have realized I really only care about the FEMA funds. So, just subset `PayOrg` to represent FEMA and then drop the `PayOrg` variable.
+```{r FEMA filter}
+missions_8 <- missions_7 %>%
+                dplyr::filter(PayOrg == "FEMA") %>%
+                subset(select = -c(PayOrg))
+
+```
+
+---
+
+## Processed Data Overview
+We have our processed dataset! Let's take a look at the overview to see how it changed.
+```{r processed data overview}
 #create a mirror set for documentation purposes
-missions_processed <- missions_7
+missions_processed <- missions_8
+
+#summary using base R
+summary(missions_processed)
+
+#not using skimr because it does not do well with long format data
+```
+
+---
+
+## Save Processed Data
+
+Let's save it into the `processed_data` folder.
+```{r save processed data}
 
 #location to save processed file
 missions_data_location <- here::here("data","processed_data","missionsprocessed.rds")

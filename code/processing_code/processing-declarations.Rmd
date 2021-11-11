@@ -18,17 +18,17 @@ Overall, processing this dataset involves the following elements:
 
 * Raw data summarization and overview
 * Removal of irrelevant variables
-* Summarization of key variables for each disaster declaration and state
 * Feature engineering to create duration of incident and response
+* Summarization of key variables for each disaster declaration and state
 * Saving the processed dataset as an .rds
 
 <br>
 
-To keep track of processing changes, each iteration of processed data will be named `missions_#`. 
+To keep track of processing changes, each iteration of processed data will be named `declarations_#`. The final processed dataset will be `declarations_processed`.
 
 <br>
 
-Ultimately, this processed dataset will be joined to the Disaster Declaration Summaries processed dataset for the analysis.
+Ultimately, this processed dataset will be joined to the Mission Assignments processed dataset for the analysis.
 
 ---
 
@@ -38,6 +38,7 @@ The following R packages are required for this script:
 * here: for path setting
 * tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
 * skimr: for data summarization
+* lubridate: for date wrangling
 ```{r libraries, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -45,6 +46,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(here) #to set paths
 library(tidyverse) #for data processing
 library(skimr) #for data summarization
+library(lubridate) #for date wrangling
 ```
 
 ---
@@ -70,4 +72,173 @@ summary(declarations_raw)
 
 #summary and structure using the skimr package
 skimr::skim(declarations_raw)
+```
+There are 23 variables and 62,589 observations. However, there are multiple lines per county that receives a disaster declaration, and the dataset includes every federally declared disaster since the 1950s. So there's plenty of cleaning to do!
+
+---
+
+## Data Cleaning and Wrangling
+For the purposes of this project, we only need detail at the disaster declaration number and state level. So we will need to summarize, but first let's remove the variables that are too granular for this analysis. 
+```{r variable list}
+#print list of variables
+colnames(declarations_raw)
+```
+
+---
+
+The `MissionAssignments.csv` data captures data from requested federal assistance from February 2, 2012 to November 11, 2021 (see `processing-missions.Rmd` for more detail). We need to filter the disaster declaration data to capture the same range, but we can do this by disaster declaration number.
+```{r time filter}
+#define path to processed missions data
+data_location_miss <- here::here("data", "processed_data", "missionsprocessed.rds")
+
+#load data
+missions_processed <- readRDS(data_location_miss)
+
+#filter based on disaster number in missions dataset
+declarations_1 <- declarations_raw %>%
+                dplyr::filter(disasterNumber %in% missions_processed$disasterNumber)
+```
+Luckily, the first disaster represented in this subset matches the first disaster captured in the mission assignments dataset. Since the data is real-time updated on date of download (November 10, 2021), we don't have to worry about lining up the end points of these datasets. We can now move forward with the cleaning.
+
+---
+
+To make the dataset a little easier to manage, let's get rid of the variables we know are junk or aren't relevant to this analysis. The following variables can be removed now:
+
+* femaDeclarationString
+* fipsStateCode
+* fipsCountyCode
+* placeCode
+* designatedArea
+* declarationRequestNumber
+* hash
+* lastRefresh
+* id
+```{r variable removal 1}
+#remove variables
+declarations_2 <- declarations_1 %>%
+                    dplyr::select(-c(femaDeclarationString,
+                                     fipsStateCode,
+                                     fipsCountyCode,
+                                     placeCode,
+                                     designatedArea,
+                                     declarationRequestNumber,
+                                     hash,
+                                     lastRefresh,
+                                     id))
+```
+We now have a dataset with 15 variables and 20,961 observations.
+
+---
+
+The next step is to conduct some feature engineering to create variables that represent the time elapsed between `incidentBeginDate` and `incidentEndDate` as well as `incidentBeginDate` and `disasterCloseoutDate`. These correspond to incident duration and response duration, respectively. 
+```{r incident and response days}
+#use `difftime` function to find the number of days 
+#response days will be absurdly long, but keeping the same to maintain units
+declarations_3 <- declarations_2 %>%
+                    dplyr::mutate(IncidentDuration = difftime(incidentEndDate,
+                                                              incidentBeginDate,
+                                                              units = c("days")),
+                                  ResponseDays = difftime(disasterCloseoutDate,
+                                                          incidentBeginDate,
+                                                          units = c("days")))
+```
+
+---
+
+The last date-related item is to create a variable that represents the year and another that represents the month of the disaster. Month will be particularly relevant for seasonal patterns (e.g. hurricane season), but year is also important to consider given administration changes and climate change.
+```{r month and year variable}
+#create year and month variable
+#drop all original time variables too
+declarations_4 <- declarations_3 %>%
+                    dplyr::mutate(IncidentYear = lubridate::year(incidentBeginDate),
+                                  IncidentMonth = lubridate::month(incidentBeginDate)) %>%
+                    subset(select = -c(incidentEndDate, 
+                                       incidentBeginDate,
+                                       disasterCloseoutDate,
+                                       declarationDate,
+                                       fyDeclared))
+```
+
+---
+
+We now have a dataset with 13 variables and 20, 961 observations. However, now that we've removed the county-level data, we need to combine rows to represent disaster declarations per state. The program declarations vary at a county-level, so the first step is to sum the rows for the program declaration variables. We don't need to worry about IA, as it was replaced by IH before our study period.
+```{r program sums}
+#group by variables not being summed (equivalent of finding the duplicates)
+#then sum the 0/1 values for the programs
+declarations_5 <- declarations_4 %>%
+                    dplyr::group_by(disasterNumber, 
+                                    state, 
+                                    declarationType,
+                                    incidentType,
+                                    declarationTitle,
+                                    IncidentDuration,
+                                    ResponseDays,
+                                    IncidentYear,
+                                    IncidentMonth) %>%
+                    dplyr::summarize(IH = sum(ihProgramDeclared),
+                                     PA = sum(paProgramDeclared),
+                                     HM = sum(hmProgramDeclared))
+```
+
+---
+
+Now we have a curious dilemma. The sums of each program represent the number of counties that had enough damage to receive federal assistance. However, not every state has the same number of counties, so the current variables aren't meaningful. There are two options: have a variable that reflects at least one program declaration anywhere in the state or have a variable that reflects the percent of counties receiving a program declaration. For now, let's do both. First, we'll start by loading and joining the processed population dataset.
+```{r join population data}
+#define path to processed population data
+data_location_pop <- here::here("data", "processed_data", "popsprocessed.rds")
+
+#load data
+pops <- readRDS(data_location_pop)
+
+#rename columns
+names(pops) <- c("state", "Population", "Counties")
+
+#combine with most recent declarations dataframe
+declarations_6 <- merge(declarations_5, pops, by="state")
+```
+
+---
+
+Next, we can create the two sets of programs variables.
+```{r programs}
+#create percents (Really proportions) of program declarations per number of counties in each state for each disaster
+declarations_7 <- declarations_6 %>%
+                    dplyr::mutate(IH_pct = IH / Counties,
+                                  PA_pct = PA / Counties,
+                                  HM_pct = HM / Counties)
+
+#recode existing program values to be 0 or 1
+declarations_8 <- declarations_7 %>%
+                    dplyr::mutate(IH = ifelse(IH > 0, 1, 0),
+                                  PA = ifelse(PA > 0, 1, 0),
+                                  HM = ifelse(HM > 0, 1, 0))
+
+#reorganize columns to clean things up a bit
+declarations_processed <- declarations_8[, c(1, 2, 8, 9, 3:7, 10, 15, 11, 16, 12, 17, 13, 14)]
+```
+
+---
+
+## Processed Data Overview
+We have our processed dataset! Let's take a look at the overview to see how it changed.
+```{r processed data overview}
+#summary using base R
+summary(declarations_processed)
+
+#summary and structure using the skimr package
+skimr::skim(declarations_processed)
+```
+
+---
+
+## Save Processed Data
+
+Time to save it to the `processed_data` folder and move onto the next step!
+```{r save processed data}
+
+#location to save processed file
+declarations_data_location <- here::here("data","processed_data","declarationsprocessed.rds")
+
+#save as an RDS
+saveRDS(declarations_processed, file = declarations_data_location)
 ```
