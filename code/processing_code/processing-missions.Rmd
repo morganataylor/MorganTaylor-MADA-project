@@ -166,23 +166,28 @@ missions_5 <- missions_4 %>%
 
 ---
 
-Currently, the dataset is a mixture of wide and long formatting. To integrate effectively with the Disaster Declaration Summaries dataframe, we need to convert it completely to long formatting.
+Instead of trying to use agencies as a categorical variable, let's convert it to total number of agencies involved in the response. Then we can calculate the sum of the FEMA funding for each disaster number and each state
 ```{r long format}
-#the gather function works positionally, so first reorder the columns to be in the right order
-#essentially grouping columns by type of value (e.g. cost share percent, requested funding, obligated funding)
-missions_6 <- missions_5[, c(1:3, 12, 6, 7, 4, 8, 9, 5, 10, 11)]
+#find count of distinct agencies for each disasterNumber and state
+missions_6 <- missions_5 %>%
+                dplyr::group_by(disasterNumber, stateorTribe) %>%
+                dplyr::mutate(TotalAgencies = n_distinct(agency)) %>%
+                subset(select = -c(agency))
 
-#trying piping several gather functions
+#convert NaN to na for variables we're keeping
+missions_6$FEMACSPct[is.nan(missions_6$FEMACSPct)] <- NA
+missions_6$FEMAOblAmt[is.nan(missions_6$FEMAOblAmt)] <- NA
+missions_6$FEMAReqAmt[is.nan(missions_6$FEMAReqAmt)] <- NA
+
+#find sum of FEMA funds
 missions_7 <- missions_6 %>%
-                tidyr::gather(PayOrg, CostSharePct, TotalCSPct:FEMACSPct) %>%
-                tidyr::gather(PayOrg2, ReqAmt, RequestedAmt:FEMAReqAmt) %>%
-                tidyr::gather(PayOrg3, OblAmt, ObligatedAmt:FEMAOblAmt) %>%
-                subset(select = -c(PayOrg2, PayOrg3))
+                dplyr::group_by(disasterNumber, stateorTribe, TotalAgencies) %>%
+                dplyr::summarize(ReqAmt = sum(FEMAReqAmt, na.rm = TRUE),
+                                 OblAmt = sum(FEMAOblAmt, na.rm = TRUE),
+                                 FEMACSAvg = mean(FEMACSPct, na.rm = TRUE))
 
-#relabel values of `PayOrg`
-missions_7$PayOrg[missions_7$PayOrg == "TotalCSPct"] <- "Total"
-missions_7$PayOrg[missions_7$PayOrg == "StateCSPct"] <- "State"
-missions_7$PayOrg[missions_7$PayOrg == "FEMACSPct"] <- "FEMA"
+#the NaN values in FEMACSAvg are when FEMA has no cost share (e.g. 0/0), so it can be replaced with 0
+missions_7$FEMACSAvg[is.nan(missions_7$FEMACSAvg)] <- 0
 ```
 
 ---
@@ -208,15 +213,6 @@ missions_7$stateorTribe[missions_7$stateorTribe == "POTAWATOMI NATION"] <- "OK"
 missions_7$stateorTribe[missions_7$stateorTribe == "Oglala Sioux Tribe of the Pine Ridge Reservation"] <- "SD"
 ```
 
----
-
-After integrating the data, I have realized I really only care about the FEMA funds. So, just subset `PayOrg` to represent FEMA and then drop the `PayOrg` variable.
-```{r FEMA filter}
-missions_8 <- missions_7 %>%
-                dplyr::filter(PayOrg == "FEMA") %>%
-                subset(select = -c(PayOrg))
-
-```
 
 ---
 
@@ -224,12 +220,10 @@ missions_8 <- missions_7 %>%
 We have our processed dataset! Let's take a look at the overview to see how it changed.
 ```{r processed data overview}
 #create a mirror set for documentation purposes
-missions_processed <- missions_8
+missions_processed <- missions_7
 
 #summary using base R
 summary(missions_processed)
-
-#not using skimr because it does not do well with long format data
 ```
 
 ---

@@ -38,8 +38,10 @@ The following R packages are required for this script:
 * summarytools: for overall dataframe summary
 * ggplot2: for plotting data
 * car: for creating QQ plots
-* gt: for creating tables for summary statistics / other numerical outputs
-* scales: for percent calculation
+* gtsummary: for creating tables for summary statistics / other numerical outputs
+* scales: for percent calculation and axis formatting
+* cowplot: for placing plots side by side
+* table1: for making summary tables
 
 ```{r libraries, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -51,8 +53,10 @@ library(skimr) #for data summarization
 library(summarytools) #for overall dataframe summary
 library(ggplot2) #for plotting data
 library(car) #for creating QQ plots
-library(gt) #for creating tables
+library(gtsummary) #for creating tables
 library(scales) #for percent calculation
+library(cowplot) #for placing plots side by side
+library(table1) #for making summary tables
 
 #global environment options
 # formatting for script to avoid scientific notation output
@@ -81,11 +85,21 @@ To better understand the data, let's use `summarytools` to better visualize the 
 ```{r data overview}
 summarytools::dfSummary(EDAdata)
 ```
+Looking at the output of `summarytools::dfsummary()`
+
+* There are 445 distinct disaster numbers across 2012 - 2021. 
+* `OblAmt` ranges from -\$855,200.3 to \$4,408,424,297.
+* `ReqAmt` ranges from -\$855,200.3 to \$4,388,540,486.
+* `ResponseDays` are missing 72% of the time, which suggests it should not be included in the analysis.
+* There are 16 possible incident types
+* There is a clear effect of both incident month and incident year.
+
+Let's dive a little deeper into each variable.
 
 ---
 
 ## Outcome of Interest: Requested FEMA Funds
-The first of two primary outcomes of interest is the total amount of funds the state requested from FEMA for a disaster declaration.
+The first of two primary outcomes of interest is the total amount of funds the state requested from the federal government for a disaster declaration.
 ```{r}
 #summary statistics
 base::summary(EDAdata$ReqAmt)
@@ -94,17 +108,1171 @@ base::summary(EDAdata$ReqAmt)
 ggplot2::ggplot(data = EDAdata, aes(x = ReqAmt)) +
   geom_density()
 
-#boxplot
+#try a log transformation out of curiosity 
+#this does ignore all negative values
+ggplot2::ggplot(data = EDAdata, aes(x = log(ReqAmt))) +
+  geom_density()
+
+#normal boxplot
 ggplot2::ggplot(data = EDAdata, aes(y = ReqAmt)) +
   geom_boxplot()
 
-#crop to $1M
+#crop to $1M to get a better idea
 ggplot2::ggplot(data = EDAdata, aes(y = ReqAmt)) +
   geom_boxplot() +
   ylim(0, 1000000)
 
+#log transformed boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = log(ReqAmt))) +
+  geom_boxplot()
+
 ##QQ plot
 car::qqPlot(EDAdata$ReqAmt)
 ```
+These outputs show the requested amounts do not follow a normal distribution, which is to be expected given the broad range of disasters. We may need to remove outliers in the analysis, but for now, we'll leave them to capture the true nature of disaster declarations. The largest outlier is likely the COVID-19 Pandemic. The log transformation does a better job of showing the distribution of the data, so we may need to consider an exponential model in the analysis; however, log(negative number) is undefined, so we would be ignoring all reimbursement data. The transformed and untransformed figures suggest there are significant tails in the data. 
+
+---
 
 ## Outcome of Interest: Obligated FEMA Funds
+The alternative outcome of interest is the funding obligated from FEMA. While this may be the same as `ReqAmt` (especially for large-scale disasters), FEMA doesn't always pay the amount the states request.
+```{r obligated funds}
+#summary statistics
+base::summary(EDAdata$OblAmt)
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = OblAmt)) +
+  geom_density()
+
+#try a log transformation out of curiosity 
+ggplot2::ggplot(data = EDAdata, aes(x = log(OblAmt))) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = OblAmt)) +
+  geom_boxplot()
+
+#crop to $1M to get a better idea
+ggplot2::ggplot(data = EDAdata, aes(y = OblAmt)) +
+  geom_boxplot() +
+  ylim(0, 1000000)
+
+#log transformed boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = log(OblAmt))) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$OblAmt)
+```
+It appears that obligated funds and requested funds have similar distributions and characteristics. The same commentary about the requested funds analysis applies here as well.
+
+---
+
+## Predictor: State
+```{r}
+#frequency table since it's categorical
+#hide NAs because there are no NAs
+summarytools::freq(EDAdata$state, report.nas = FALSE)
+
+#examine graphical relationship with outcomes
+#include a jitter function to have a better idea of number of measurements and distribution
+#filter top 5 states
+#start with obligated amount
+obl_fig_state <- EDAdata %>%
+                    dplyr::add_count(state) %>%
+                    dplyr::filter(dplyr::dense_rank(-n) < 6) %>%
+                    ggplot2::ggplot(aes(x = state, y = OblAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "tomato") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      labs(x = "State or Territory",
+                           y = "Obligated FEMA Funds",
+                           title = "FEMA funds obligated to five most disaster-prone states")
+obl_fig_state
+
+#save file
+obl_state_fig_file = here("results","obl-state.png")
+ggsave(filename = obl_state_fig_file, plot = obl_fig_state)
+
+#repeat for requested funds
+req_fig_state <- EDAdata %>%
+                    dplyr::add_count(state) %>%
+                    dplyr::filter(dplyr::dense_rank(-n) < 6) %>%
+                    ggplot2::ggplot(aes(x = state, y = ReqAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "turquoise4") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      labs(x = "State or Territory",
+                           y = "Requested FEMA Funds",
+                           title = "FEMA funds requested by five most disaster-prone states")
+req_fig_state
+
+#save file
+req_state_fig_file = here("results","req-state.png")
+ggsave(filename = req_state_fig_file, plot = req_fig_state)
+
+#create a table where columns represent requested and obligated funds and rows are 5 most disaster-prone states
+decs_state_5 <- EDAdata %>%
+                    dplyr::add_count(state) %>%
+                    dplyr::filter(dense_rank(-n) < 6) %>%
+                    gtsummary::select(state, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = state,
+                      label = list(state ~ "State or Territory",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2", "stat_3", "stat_4", "stat_5") ~ "**State**") %>%
+                    gtsummary::modify_caption("**Table 1. FEMA Funding for 5 Most Disaster-Prone States 2012 - 2021**") %>%
+                    gtsummary::bold_labels()
+decs_state_5
+
+#save file
+decs_state_file = here("results", "decs-state-5.Rds")
+saveRDS(decs_state_5, file = decs_state_file)
+```
+
+---
+
+## Predictor: Incident Year
+```{r}
+#summary statistics since it's continuous
+base::summary(EDAdata$IncidentYear)
+
+#examine graphical relationship with outcomes
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = IncidentYear)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = IncidentYear)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$IncidentYear)
+
+#histogram distribution
+year_hist <- EDAdata %>% 
+               ggplot2::ggplot(aes(x=IncidentYear)) + 
+                        geom_bar(fill="steelblue4") + 
+                        scale_x_continuous(breaks = seq(2012, 2021, by = 1)) +
+                        scale_y_continuous(expand = c(0, 0), limits = c(0, 125)) +
+                        geom_text(stat='count', aes(label=..count..), vjust=-1) +
+                        labs(x = "Incident Year",
+                             y = "Number of Declarations",
+                             title = "Disaster Declarations per Year (2012 - 2021)")
+year_hist
+
+#save file
+year_fig_file = here("results","incidentyear.png")
+ggsave(filename = year_fig_file, plot = year_hist)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per incident year
+req_fig_year <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IncidentYear)) +
+                      geom_bar(aes(y = ReqAmt),
+                               stat = "identity",
+                               fill = "tomato") +
+                      scale_y_continuous(expand = c(0, 0), 
+                                         labels = scales::dollar_format()) +
+                      scale_x_continuous(breaks = seq(2012, 2021, by = 1)) +
+                      labs(x = "Incident Year",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_year
+
+#repeat for obligated funds
+obl_fig_year <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IncidentYear)) +
+                      geom_bar(aes(y = OblAmt),
+                               stat = "identity",
+                               fill = "turquoise4") +
+                      scale_y_continuous(expand = c(0, 0),
+                                         labels = scales::dollar_format()) +
+                      scale_x_continuous(breaks = seq(2012, 2021, by = 1)) +
+                      labs(x = "Incident Year",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_year
+
+#combine into one plot
+plot_col <- cowplot::plot_grid(req_fig_year, 
+                                     obl_fig_year,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col
+
+
+title1 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds per year",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_year <- cowplot::plot_grid(
+                              title1, plot_col,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_year
+
+#save file
+funds_year_fig_file = here("results","funds-years.png")
+ggsave(filename = funds_year_fig_file, plot = funds_fig_year)
+
+#create a table where columns represent requested and obligated funds and rows are 5 most disaster-prone states
+decs_year_3 <- EDAdata %>%
+                    dplyr::add_count(IncidentYear) %>%
+                    dplyr::filter(dense_rank(-n) < 4) %>%
+                    gtsummary::select(IncidentYear, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = IncidentYear,
+                      label = list(IncidentYear ~ "Year",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2", "stat_3") ~ "**Year**") %>%
+                    gtsummary::modify_caption("**Table 2. FEMA Funding for the 3 Costliest Years (2012 - 2021)**") %>%
+                    gtsummary::bold_labels()
+decs_year_3
+
+#save file
+decs_year_file = here("results", "decs-year-3.Rds")
+saveRDS(decs_year_3, file = decs_year_file)
+```
+
+---
+
+## Incident Month
+```{r}
+#summary statistics since it's continuous
+base::summary(EDAdata$IncidentMonth)
+
+#examine graphical relationship with outcomes
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = IncidentMonth)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = IncidentMonth)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$IncidentMonth)
+
+#histogram distribution
+month_hist <- EDAdata %>% 
+               ggplot2::ggplot(aes(x=IncidentMonth)) + 
+                        geom_bar(fill="darkseagreen4") + 
+                        scale_x_continuous(breaks = seq(1, 12, by = 1),
+                                           labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                      "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")) +
+                        scale_y_continuous(expand = c(0, 0), limits = c(0, 110)) +
+                        geom_text(stat='count', aes(label=..count..), vjust=-1) +
+                        labs(x = "Declaration Month",
+                             y = "Number of Declarations",
+                             title = "Disaster Declarations per Month (2012 - 2021)")
+month_hist
+
+#save file
+month_fig_file = here("results","incidentmonth.png")
+ggsave(filename = month_fig_file, plot = month_hist)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per incident month
+req_fig_month <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IncidentMonth)) +
+                      geom_bar(aes(y = ReqAmt),
+                               stat = "identity",
+                               fill = "tomato") +
+                      scale_y_continuous(expand = c(0, 0), 
+                                         labels = scales::dollar_format()) +
+                      scale_x_continuous(breaks = seq(1, 12, by = 1),
+                                           labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                      "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")) +
+                      labs(x = "Declaration Month",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_month
+
+#repeat for obligated funds
+obl_fig_month <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IncidentMonth)) +
+                      geom_bar(aes(y = OblAmt),
+                               stat = "identity",
+                               fill = "turquoise4") +
+                      scale_y_continuous(expand = c(0, 0),
+                                         labels = scales::dollar_format()) +
+                      scale_x_continuous(breaks = seq(1, 12, by = 1),
+                                           labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                      "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")) +
+                      labs(x = "Declaration Month",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_month
+
+#combine into one plot
+plot_col1 <- cowplot::plot_grid(req_fig_month, 
+                                     obl_fig_month,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col1
+
+
+title2 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by declaration month",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_month <- cowplot::plot_grid(
+                              title2, plot_col1,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_month
+
+#save file
+funds_month_fig_file = here("results","funds-month.png")
+ggsave(filename = funds_month_fig_file, plot = funds_fig_month)
+
+#create a table where columns represent requested and obligated funds and rows are 3 most distaster prone-months
+decs_month_3 <- EDAdata %>%
+                    dplyr::add_count(IncidentMonth) %>%
+                    dplyr::filter(dense_rank(-n) < 4) %>%
+                    gtsummary::select(IncidentMonth, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = IncidentMonth,
+                      label = list(IncidentMonth ~ "Month",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>%
+                    gtsummary::modify_header(update = list(
+                                               stat_1 ~ "**Jan**",
+                                               stat_2 ~ "**Sept**",
+                                               stat_3 ~ "**Oct**"
+                                             )) %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2", "stat_3") ~ "**Month**") %>%
+                    gtsummary::modify_caption("**Table 3. FEMA Funding for the 3 Costliest Months (2012 - 2021)**") %>%
+                    gtsummary::bold_labels()
+decs_month_3
+
+#save file
+decs_month_file = here("results", "decs-month-3.Rds")
+saveRDS(decs_month_3, file = decs_month_file)
+```
+
+---
+
+## Predictor: Declaration Type
+```{r}
+#frequency table since it's categorical
+#hide NAs because there are no NAs
+summarytools::freq(EDAdata$declarationType, report.nas = FALSE)
+
+
+#examine graphical relationship with outcomes
+#include a jitter function to have a better idea of number of measurements and distribution
+#start with obligated amount
+obl_fig_DT <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = declarationType, y = OblAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "tomato") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      scale_x_discrete(labels = c("Major Disaster Declaration", "Emergency Declaration")) + 
+                      labs(x = "Declaration Type",
+                           y = "Obligated FEMA Funds",
+                           title = "FEMA funds obligated for declaration types")
+obl_fig_DT
+
+#save file
+obl_DT_fig_file = here("results","obl-DT.png")
+ggsave(filename = obl_DT_fig_file, plot = obl_fig_DT)
+
+#repeat for requested funds
+req_fig_DT <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = declarationType, y = ReqAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "turquoise4") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      scale_x_discrete(labels = c("Major Disaster Declaration", "Emergency Declaration")) + 
+                      labs(x = "Declaration Type",
+                           y = "Requested FEMA Funds",
+                           title = "FEMA funds requested for declaration types")
+req_fig_DT
+
+#save file
+req_DT_fig_file = here("results","req-DT.png")
+ggsave(filename = req_DT_fig_file, plot = req_fig_DT)
+
+#create a table where rows represent requested and obligated funds and columns are declaration type
+decs_dtype <- EDAdata %>%
+                    gtsummary::select(declarationType, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = declarationType,
+                      label = list(declarationType ~ "Type",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_header(update = list(
+                                               stat_1 ~ "**Major Disaster**",
+                                               stat_2 ~ "**Emergency**")) %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2") ~ "**Type**") %>%
+                    gtsummary::modify_caption("**Table 4. FEMA Funding for Declaration Types 2012 - 2021**") %>%
+                    gtsummary::bold_labels()
+decs_dtype
+
+#save file
+decs_dtype_file = here("results", "decs-DT.Rds")
+saveRDS(decs_dtype, file = decs_dtype_file)
+```
+
+---
+
+## Predictor: Incident Type
+```{r}
+#frequency table since it's categorical
+#hide NAs because there are no NAs
+summarytools::freq(EDAdata$incidentType, report.nas = FALSE)
+
+#examine graphical relationship with outcomes
+#include a jitter function to have a better idea of number of measurements and distribution
+#start with obligated amount
+obl_fig_IT <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = incidentType, y = OblAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "tomato") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      labs(x = "Incident Type",
+                           y = "Obligated FEMA Funds",
+                           title = "FEMA funds obligated for incident types") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+obl_fig_IT
+
+#save file
+obl_IT_fig_file = here("results","obl-IT.png")
+ggsave(filename = obl_IT_fig_file, plot = obl_fig_IT)
+
+#repeat for requested funds
+req_fig_IT <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = incidentType, y = ReqAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "turquoise4") +
+                      scale_y_continuous(labels = scales::dollar_format()) + 
+                      labs(x = "Incident Type",
+                           y = "Requested FEMA Funds",
+                           title = "FEMA funds requested for declaration types") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+req_fig_IT
+
+#save file
+req_IT_fig_file = here("results","req-IT.png")
+ggsave(filename = req_IT_fig_file, plot = req_fig_IT)
+
+#create a table where rows represent requested and obligated funds and columns are declaration type
+decs_itype3 <- EDAdata %>%
+                    dplyr::add_count(incidentType) %>%
+                    dplyr::filter(dense_rank(-n) < 4) %>%
+                    gtsummary::select(incidentType, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = incidentType,
+                      label = list(incidentType ~ "Type",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2", "stat_3") ~ "**Type**") %>%
+                    gtsummary::modify_caption("**Table 4. FEMA Funding for Declaration Types 2012 - 2021**") %>%
+                    gtsummary::bold_labels()
+decs_itype3
+
+#save file
+decs_itype3_file = here("results", "decs-IT-3.Rds")
+saveRDS(decs_itype3, file = decs_itype3_file)
+```
+
+---
+
+## Predictor: Incident Duration
+```{r}
+#convert class to numeric
+EDAdata$IncidentDuration <- as.numeric(EDAdata$IncidentDuration, units="days")
+
+#summary statistics since it's continuous
+base::summary(EDAdata$IncidentDuration)
+#NAs are ongoing events
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = IncidentDuration)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = IncidentDuration)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$IncidentDuration)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per incident month
+req_fig_dur <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IncidentDuration)) +
+                      geom_point(aes(y = ReqAmt),
+                                 color = "tomato",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Incident Duration (Days)",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_dur
+
+#repeat for obligated funds
+obl_fig_dur <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IncidentDuration)) +
+                      geom_point(aes(y = OblAmt),
+                                 color = "turquoise4",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Incident Duration (Days)",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_dur
+
+#combine into one plot
+plot_col2 <- cowplot::plot_grid(req_fig_dur, 
+                                     obl_fig_dur,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col2
+
+
+title3 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by Incident Duration (Under $1B)",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_dur <- cowplot::plot_grid(
+                              title3, plot_col2,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_dur
+
+#save file
+funds_dur_fig_file = here("results","funds-dur.png")
+ggsave(filename = funds_dur_fig_file, plot = funds_fig_dur)
+```
+
+---
+
+## Predictor: Population
+```{r}
+#convert class to numeric
+EDAdata$Population <- as.numeric(gsub(",", "", EDAdata$Population))
+
+#summary statistics since it's continuous
+base::summary(EDAdata$Population)
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = Population)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = Population)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$Population)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per pop
+req_fig_pop <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = Population)) +
+                      geom_point(aes(y = ReqAmt),
+                                 color = "tomato",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      scale_x_continuous(label = comma,
+                                         limits = c(0, 40000000)) +
+                      labs(x = "State Population",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_pop
+
+#repeat for obligated funds
+obl_fig_pop <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = Population)) +
+                      geom_point(aes(y = OblAmt),
+                                 color = "turquoise4",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      scale_x_continuous(label = comma,
+                                         limits = c(0, 40000000)) +
+                      labs(x = "State Population",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_pop
+
+#combine into one plot
+plot_col3 <- cowplot::plot_grid(req_fig_pop, 
+                                     obl_fig_pop,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col3
+
+
+title4 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by State Population (Under $1B)",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_pop <- cowplot::plot_grid(
+                              title4, plot_col3,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_pop
+
+#save file
+funds_pop_fig_file = here("results","funds-pop.png")
+ggsave(filename = funds_pop_fig_file, plot = funds_fig_pop)
+```
+
+---
+
+## Predictor: Total Number of Agencies Involved
+```{r}
+#summary statistics since it's continuous
+base::summary(EDAdata$TotalAgencies)
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = TotalAgencies)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = TotalAgencies)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$TotalAgencies)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per incident month
+req_fig_ag <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = TotalAgencies)) +
+                      geom_point(aes(y = ReqAmt),
+                                 color = "tomato",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Number of Federal Agencies",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_ag
+
+#repeat for obligated funds
+obl_fig_ag <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = TotalAgencies)) +
+                      geom_point(aes(y = OblAmt),
+                                 color = "turquoise4",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Number of Federal Agencies",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_ag
+
+#combine into one plot
+plot_col4 <- cowplot::plot_grid(req_fig_ag, 
+                                     obl_fig_ag,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col4
+
+
+title5 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by number of federal agencies (Under $1B)",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_ag <- cowplot::plot_grid(
+                              title5, plot_col4,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_ag
+
+#save file
+funds_ag_fig_file = here("results","funds-ag.png")
+ggsave(filename = funds_ag_fig_file, plot = funds_fig_ag)
+```
+
+---
+
+## Predictor: Number of Counties
+```{r}
+#summary statistics since it's continuous
+base::summary(EDAdata$Counties)
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = Counties)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = Counties)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$Counties)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per incident month
+req_fig_count <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = Counties)) +
+                      geom_point(aes(y = ReqAmt),
+                                 color = "tomato",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Number of Counties",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_count
+
+#repeat for obligated funds
+obl_fig_count <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = Counties)) +
+                      geom_point(aes(y = OblAmt),
+                                 color = "turquoise4",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Number of Counties",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_count
+
+#combine into one plot
+plot_col5 <- cowplot::plot_grid(req_fig_count, 
+                                     obl_fig_count,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col5
+
+
+title6 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by number of counties (Under $1B)",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_count <- cowplot::plot_grid(
+                              title6, plot_col5,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_count
+
+#save file
+funds_count_fig_file = here("results","funds-count.png")
+ggsave(filename = funds_count_fig_file, plot = funds_fig_count)
+```
+
+---
+
+## Predictor: FEMA Cost Share Average
+```{r}
+#summary statistics since it's continuous
+base::summary(EDAdata$FEMACSAvg)
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = FEMACSAvg)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = FEMACSAvg)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$FEMACSAvg)
+
+#examine graphical relationship with outcomes of interest
+#look at total cost per incident month
+req_fig_cs <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = FEMACSAvg)) +
+                      geom_point(aes(y = ReqAmt),
+                                 color = "tomato",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Average FEMA Cost Share",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_cs
+
+#repeat for obligated funds
+obl_fig_cs <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = FEMACSAvg)) +
+                      geom_point(aes(y = OblAmt),
+                                 color = "turquoise4",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Average FEMA Cost Share",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_cs
+
+#combine into one plot
+plot_col6 <- cowplot::plot_grid(req_fig_cs, 
+                                     obl_fig_cs,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col6
+
+
+title7 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by avg FEMA cost share (Under $1B)",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_cs <- cowplot::plot_grid(
+                              title7, plot_col6,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_cs
+
+#save file
+funds_cs_fig_file = here("results","funds-cs.png")
+ggsave(filename = funds_cs_fig_file, plot = funds_fig_cs)
+```
+
+---
+
+## Predictor: IH Program
+```{r}
+#convert to factor
+EDAdata$IH <- as.factor(EDAdata$IH)
+
+#frequency table since it's categorical
+#hide NAs because there are no NAs
+summarytools::freq(EDAdata$IH, report.nas = FALSE)
+
+#examine graphical relationship with outcomes
+#include a jitter function to have a better idea of number of measurements and distribution
+#start with obligated amount
+obl_fig_IH <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IH, y = OblAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "tomato") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      scale_x_discrete(labels = c("Not Awarded", "Awarded")) +
+                      labs(x = "IH Program",
+                           y = "Obligated FEMA Funds",
+                           title = "FEMA funds obligated when IH program is awarded") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+obl_fig_IH
+
+#save file
+obl_IH_fig_file = here("results","obl-IH.png")
+ggsave(filename = obl_IH_fig_file, plot = obl_fig_IH)
+
+#repeat for requested funds
+req_fig_IH <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = IH, y = ReqAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "turquoise4") +
+                      scale_y_continuous(labels = scales::dollar_format()) + 
+                      scale_x_discrete(labels = c("Not Awarded", "Awarded")) +
+                      labs(x = "IH Program",
+                           y = "Requested FEMA Funds",
+                           title = "FEMA funds requested when IH program is awarded") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+req_fig_IH
+
+#save file
+req_IH_fig_file = here("results","req-IH.png")
+ggsave(filename = req_IH_fig_file, plot = req_fig_IH)
+
+#create a table where rows represent requested and obligated funds and columns are declaration type
+decs_ih <- EDAdata %>%
+                    gtsummary::select(IH, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = IH,
+                      label = list(IH ~ "Individuals / Households Program",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_header(update = list(
+                                               stat_1 ~ "**Not Awarded**",
+                                               stat_2 ~ "**Awarded**")) %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2") ~ "**Individuals/Households Program**") %>%
+                    gtsummary::modify_caption("**Table 5. FEMA Funding by IH Program Awardance 2012 - 2021**") %>%
+                    gtsummary::bold_labels()
+decs_ih
+
+#save file
+decs_ih_file = here("results", "decs-IH.Rds")
+saveRDS(decs_ih, file = decs_ih_file)
+```
+
+---
+
+## Predictor: PA Program
+```{r}
+#convert to factor
+EDAdata$PA <- as.factor(EDAdata$PA)
+
+#frequency table since it's categorical
+#hide NAs because there are no NAs
+summarytools::freq(EDAdata$PA, report.nas = FALSE)
+
+#examine graphical relationship with outcomes
+#include a jitter function to have a better idea of number of measurements and distribution
+#start with obligated amount
+obl_fig_PA <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = PA, y = OblAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "tomato") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      scale_x_discrete(labels = c("Not Awarded", "Awarded")) +
+                      labs(x = "PA Program",
+                           y = "Obligated FEMA Funds",
+                           title = "FEMA funds obligated when PA program is awarded") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+obl_fig_PA
+
+#save file
+obl_PA_fig_file = here("results","obl-PA.png")
+ggsave(filename = obl_PA_fig_file, plot = obl_fig_PA)
+
+#repeat for requested funds
+req_fig_PA <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = PA, y = ReqAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "turquoise4") +
+                      scale_y_continuous(labels = scales::dollar_format()) + 
+                      scale_x_discrete(labels = c("Not Awarded", "Awarded")) +
+                      labs(x = "PA Program",
+                           y = "Requested FEMA Funds",
+                           title = "FEMA funds requested when PA program is awarded") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+req_fig_PA
+
+#save file
+req_PA_fig_file = here("results","req-PA.png")
+ggsave(filename = req_PA_fig_file, plot = req_fig_PA)
+
+#create a table where rows represent requested and obligated funds and columns are declaration type
+decs_pa <- EDAdata %>%
+                    gtsummary::select(PA, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = PA,
+                      label = list(PA ~ "Public Assistance Program",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_header(update = list(
+                                               stat_1 ~ "**Not Awarded**",
+                                               stat_2 ~ "**Awarded**")) %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2") ~ "**Public Assistance Program**") %>%
+                    gtsummary::modify_caption("**Table 6. FEMA Funding by PA Program Awardance 2012 - 2021**") %>%
+                    gtsummary::bold_labels()
+decs_pa
+
+#save file
+decs_pa_file = here("results", "decs-PA.Rds")
+saveRDS(decs_pa, file = decs_pa_file)
+```
+
+---
+
+## Predictor: HM Program
+```{r}
+#convert to factor
+EDAdata$HM <- as.factor(EDAdata$HM)
+
+#frequency table since it's categorical
+#hide NAs because there are no NAs
+summarytools::freq(EDAdata$HM, report.nas = FALSE)
+
+#examine graphical relationship with outcomes
+#include a jitter function to have a better idea of number of measurements and distribution
+#start with obligated amount
+obl_fig_HM <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = HM, y = OblAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "tomato") +
+                      scale_y_continuous(labels = scales::dollar_format()) +
+                      scale_x_discrete(labels = c("Not Awarded", "Awarded")) +
+                      labs(x = "HM Program",
+                           y = "Obligated FEMA Funds",
+                           title = "FEMA funds obligated when HM program is awarded") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+obl_fig_HM
+
+#save file
+obl_HM_fig_file = here("results","obl-HM.png")
+ggsave(filename = obl_HM_fig_file, plot = obl_fig_HM)
+
+#repeat for requested funds
+req_fig_HM <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = HM, y = ReqAmt)) +
+                      geom_boxplot() +
+                      geom_jitter(alpha = 0.5, width = 0.2, height = 0.2, color = "turquoise4") +
+                      scale_y_continuous(labels = scales::dollar_format()) + 
+                      scale_x_discrete(labels = c("Not Awarded", "Awarded")) +
+                      labs(x = "HM Program",
+                           y = "Requested FEMA Funds",
+                           title = "FEMA funds requested when HM program is awarded") +
+                      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+req_fig_HM
+
+#save file
+req_HM_fig_file = here("results","req-HM.png")
+ggsave(filename = req_HM_fig_file, plot = req_fig_HM)
+
+#create a table where rows represent requested and obligated funds and columns are declaration type
+decs_hm <- EDAdata %>%
+                    gtsummary::select(HM, ReqAmt, OblAmt) %>%
+                    gtsummary::tbl_summary(
+                      by = HM,
+                      label = list(HM ~ "Hazard Mitigation Program",
+                                   ReqAmt ~ "Requested Funds",
+                                   OblAmt ~ "Obligated Funds"),
+                      statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+                    gtsummary::modify_header(label ~ "**Variable**") %>% 
+                    gtsummary::modify_header(update = list(
+                                               stat_1 ~ "**Not Awarded**",
+                                               stat_2 ~ "**Awarded**")) %>% 
+                    gtsummary::modify_spanning_header(c("stat_1", "stat_2") ~ "**Hazard Mitigation Program**") %>%
+                    gtsummary::modify_caption("**Table 7. FEMA Funding by HM Program Awardance 2012 - 2021**") %>%
+                    gtsummary::bold_labels()
+decs_hm
+
+#save file
+decs_hm_file = here("results", "decs-HM.Rds")
+saveRDS(decs_hm, file = decs_hm_file)
+```
+
+---
+
+## Create "Table 1"
+Make the summary table for the manuscript. Variables to include:
+
+* state
+* IncidentYear
+* IncidentMonth
+* declarationType
+* incidentType
+* IncidentDuration
+* IH
+* PA
+* HM
+* Population
+* Counties
+* TotalAgencies
+* FEMACSAvg
+
+```{r}
+#label factors
+EDAdata$IH <- factor(EDAdata$IH, 
+                     levels = c(0, 1),
+                     labels = c("Not Awarded", "Awarded"))
+EDAdata$PA <- factor(EDAdata$PA, 
+                     levels = c(0, 1),
+                     labels = c("Not Awarded", "Awarded"))
+EDAdata$HM <- factor(EDAdata$HM, 
+                     levels = c(0, 1),
+                     labels = c("Not Awarded", "Awarded"))
+
+#specify table labels
+table1::label(EDAdata$state) <- "State"
+table1::label(EDAdata$IncidentYear) <- "Incident Year"
+table1::label(EDAdata$IncidentMonth) <- "Declaration Month"
+table1::label(EDAdata$declarationType) <- "Declaration Type"
+table1::label(EDAdata$incidentType) <- "Incident Type"
+table1::label(EDAdata$IncidentDuration) <- "Incident Duration"
+table1::label(EDAdata$Population) <- "State Population"
+table1::label(EDAdata$Counties) <- "Counties per State"
+table1::label(EDAdata$TotalAgencies) <- "Federal Agencies Involved"
+table1::label(EDAdata$FEMACSAvg) <- "Average FEMA Cost Share"
+table1::label(EDAdata$IH) <- "Individuals/Households Program"
+table1::label(EDAdata$PA) <- "Public Assistance Program"
+table1::label(EDAdata$HM) <- "Hazard Mitigation Program"
+table1::label(EDAdata$ReqAmt) <- "Requested FEMA Funds"
+table1::label(EDAdata$OblAmt) <- "Obligated FEMA Funds"
+
+#specify units
+table1::units(EDAdata$IncidentDuration) <- "days"
+
+#create table
+table1 <- table1::table1(~ ReqAmt + OblAmt + state + IncidentYear + IncidentMonth + declarationType + incidentType +
+                           IncidentDuration + IH + PA + HM + Population + Counties + TotalAgencies + FEMACSAvg,
+                          data = EDAdata)
+
+#save file
+table1_file = here("results", "table1.Rds")
+saveRDS(table1, file = table1_file)
+```
+
+---
+
+## Save Data
+Since we've made some changes to the format of the processed data, let's save it for the analysis.
+```{r}
+#location to save processed file
+analysis_data_location <- here::here("data","processed_data","analysisdata.rds")
+
+#save as an RDS
+saveRDS(EDAdata, file = analysis_data_location)
+```

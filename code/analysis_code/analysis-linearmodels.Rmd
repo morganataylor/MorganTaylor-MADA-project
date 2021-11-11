@@ -1,0 +1,273 @@
+---
+title: "Analysis: Linear Models"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the processed analysis data and uses the tidymodels framework to fit linear models. Follow the previous markdowns to generate the data.
+
+<br>
+
+This analysis examines the predictors of allocation of FEMA funds during disaster declarations. The following definitions exist for the analysis:
+
+* The two outcomes of interest are Requested Amount (`ReqAmt`) and Obligated Amount (`OblAmt`).
+* The primary predictor of interest is Incident Duration (`IncidentDuration`)
+* Whichever outcome is not currently fitted to the model will *not* be considered a predictor of interest
+
+
+<br>
+
+For each outcome of interest, the following steps will be completed:
+
+1. Fit a simple linear regression with the primary predictor of interest
+2. Fit a multivariable linear regression
+3. Fit a LASSO linear regression
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for path setting
+* tidyverse: for all packages in the Tidyverse (ggplot2, dyplr, tidyr, readr, purr, tibble, stringr, forcats)
+* skimr: for data summarization
+* tidymodels: for data modeling
+
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #to set paths
+library(tidyverse) #for data processing
+library(skimr) #for data summarization
+library(tidymodels) #for data modeling
+
+#global environment options
+# formatting for script to avoid scientific notation output
+options(scipen=999)
+```
+
+---
+
+## Load Processed Data
+Load the data generated from the markdowns in the `processing_code` folder.
+```{r load data}
+#define file path
+data_location <- here::here("data", "processed_data", "analysisdata.rds")
+
+#load data
+analysis_data <- readRDS(data_location)
+```
+
+---
+
+## Data Overview
+To better understand the data, let's use `summarytools` to better visualize the data.
+```{r data overview}
+skimr::skim(analysis_data)
+```
+
+---
+
+## Data Filtering
+We will make two datasets with the only the relevant variables for each: 
+
+* state
+* IncidentYear
+* IncidentMonth
+* declarationType
+* incidentType
+* IncidentDuration
+* IH
+* PA
+* HM
+* Population
+* Counties
+* TotalAgencies
+* FEMACSAvg
+
+```{r data subsets}
+#obligated amount
+obl_data <- analysis_data %>%
+              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, IH, PA, HM,
+                            Population, Counties, TotalAgencies, FEMACSAvg, OblAmt)
+
+#requested amount
+req_data <- analysis_data %>%
+              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, IH, PA, HM,
+                            Population, Counties, TotalAgencies, FEMACSAvg, ReqAmt)
+```
+
+---
+
+## Outcome of Interest: Requested FEMA Funds
+We will start with requested FEMA funds as the outcome of interest.
+
+<br>
+
+### Data Set Up
+Split the data randomly into train and test datasets, and define cross validation
+```{r req data splitting}
+#fix random numbers by setting the seed (helps reproducibility)
+set.seed(123)
+
+#put 3/4 of data into the training set
+req_data_split <- rsample::initial_split(req_data, prop = 3/4)
+
+#create dataframes for the two sets
+req_train_data <- rsample::training(req_data_split)
+req_test_data <- rsample::testing(req_data_split)
+```
+
+---
+
+### Simple Linear Regression
+Create the SLR using the `tidymodels` setup.
+```{r req SLR}
+#define lr mod
+lr_mod <- parsnip::linear_reg() %>%
+          parsnip::set_engine("lm")
+
+#define recipe
+req_SLR_rec <- recipes::recipe(ReqAmt ~ IncidentDuration, data = req_train_data)
+
+#define SLR workflow
+req_SLR_wflow <- workflows::workflow() %>%
+                   workflows::add_model(lr_mod) %>%
+                   workflows::add_recipe(req_SLR_rec)
+
+#fit the training data to the workflow
+req_SLR_fit <- req_SLR_wflow %>%
+                  parsnip::fit(data = req_train_data)
+
+#create tibble for model fit using broom and extract
+req_SLR_fit %>%
+  workflowsets::extract_fit_parsnip() %>%
+  broom::tidy()
+```
+
+<br>
+
+Create box and whisker plot for the fit output.
+```{r}
+req_SLR_bp <- broom.mixed::tidy(req_SLR_fit) %>%
+                dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
+                                   whisker_args = list(color = "blue"),
+                                   vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+req_SLR_bp
+```
+
+<br>
+
+Predict requested funds from FEMA  based on the model above for the training data set.
+```{r req SLR predict}
+#use predict to predict funds
+stats::predict(req_SLR_fit, req_train_data)
+
+#create df with model predictions and actual measures
+req_SLR_aug <- augment(req_SLR_fit, req_train_data)
+
+#add labeling variables for later summarization
+req_SLR_train <- req_SLR_aug %>%
+                    dplyr::mutate(data = "train",
+                                  model = "SLR")
+```
+
+<br>
+
+Assess goodness of fit measures.
+```{r req SLR eval}
+#using glace
+modelsummary::glance(req_SLR_fit)
+
+#using the prediction capacity
+req_SLR_train %>% yardstick::metrics(truth = ReqAmt, estimate = .pred)
+```
+This is a terrible model. Time to try adding more predictors.
+
+---
+
+### Multivariable Linear Regression
+Create the MVR using the `tidymodels` setup.
+```{r req SLR}
+#define linear mod
+lr_mod <- linear_reg() %>%
+              set_engine("lm")
+
+#define recipe
+req_MVR_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data)
+
+#define SLR workflow
+req_MVR_wflow <- workflows::workflow() %>%
+                   workflows::add_model(lr_mod) %>%
+                   workflows::add_recipe(req_MVR_rec)
+
+#fit the training data to the workflow
+req_MVR_fit <- req_MVR_wflow %>%
+                  parsnip::fit(data = req_train_data)
+
+#create tibble for model fit using broom and extract
+req_MVR_fit %>%
+  workflowsets::extract_fit_parsnip() %>%
+  broom::tidy()
+```
+
+<br>
+
+Create box and whisker plot for the fit output.
+```{r}
+#basic box and whisker plot
+req_MVR_bp <- broom.mixed::tidy(req_MVR_fit) %>%
+                dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
+                                   whisker_args = list(color = "blue"),
+                                   vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+req_MVR_bp
+
+#there's a lot of information here, but hard to identify the ones that are significant due to volume
+
+#box and whisker plot for significant predictors
+#first filter significant results
+req_MVR_fit_sig <- broom.mixed::tidy(req_MVR_fit) %>%
+                      dplyr::filter(p.value < 0.05)
+
+#box and whisker plot for lm_fit2 significant predictors
+req_MVR_fit_bp2 <- req_MVR_fit_sig %>%
+                        dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
+                                           whisker_args = list(color = "blue"),
+                                           vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+req_MVR_fit_bp2
+```
+
+<br>
+
+Predict requested funds from FEMA  based on the model above for the training data set.
+```{r req SLR predict}
+#use predict to predict funds
+stats::predict(req_MVR_fit, req_train_data)
+
+#create df with model predictions and actual measures
+req_MVR_aug <- augment(req_MVR_fit, req_train_data)
+
+#add labeling variables for later summarization
+req_MVR_train <- req_MVR_aug %>%
+                    dplyr::mutate(data = "train",
+                                  model = "MVR")
+```
+
+<br>
+
+Assess goodness of fit measures.
+```{r req SLR eval}
+#using glace
+modelsummary::glance(req_SLR_fit)
+
+#using the prediction capacity
+req_SLR_train %>% yardstick::metrics(truth = ReqAmt, estimate = .pred)
+```
+This is a terrible model. Time to try adding more predictors.
