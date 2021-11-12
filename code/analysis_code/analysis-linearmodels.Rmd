@@ -5,7 +5,6 @@ output:
     theme: flatly
     toc: FALSE
 ---
-<br>
 
 ---
 
@@ -27,7 +26,7 @@ For each outcome of interest, the following steps will be completed:
 
 1. Fit a simple linear regression with the primary predictor of interest
 2. Fit a multivariable linear regression
-3. Fit a LASSO linear regression
+3. Comparison of the two models
 
 ---
 
@@ -76,7 +75,7 @@ skimr::skim(analysis_data)
 ---
 
 ## Data Filtering
-We will make two datasets with the only the relevant variables for each: 
+We first need to address the NA values, and then we will make two datasets with the only the relevant variables for each: 
 
 * state
 * IncidentYear
@@ -84,6 +83,7 @@ We will make two datasets with the only the relevant variables for each:
 * declarationType
 * incidentType
 * IncidentDuration
+* ResponseDays
 * IH
 * PA
 * HM
@@ -95,12 +95,12 @@ We will make two datasets with the only the relevant variables for each:
 ```{r data subsets}
 #obligated amount
 obl_data <- analysis_data %>%
-              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, IH, PA, HM,
+              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
                             Population, Counties, TotalAgencies, FEMACSAvg, OblAmt)
 
 #requested amount
 req_data <- analysis_data %>%
-              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, IH, PA, HM,
+              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
                             Population, Counties, TotalAgencies, FEMACSAvg, ReqAmt)
 ```
 
@@ -155,7 +155,7 @@ req_SLR_fit %>%
 <br>
 
 Create box and whisker plot for the fit output.
-```{r}
+```{r req SLR bp}
 req_SLR_bp <- broom.mixed::tidy(req_SLR_fit) %>%
                 dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
                                    whisker_args = list(color = "blue"),
@@ -195,7 +195,7 @@ This is a terrible model. Time to try adding more predictors.
 
 ### Multivariable Linear Regression
 Create the MVR using the `tidymodels` setup.
-```{r req SLR}
+```{r req MVR}
 #define linear mod
 lr_mod <- linear_reg() %>%
               set_engine("lm")
@@ -221,7 +221,7 @@ req_MVR_fit %>%
 <br>
 
 Create box and whisker plot for the fit output.
-```{r}
+```{r req MVR bp}
 #basic box and whisker plot
 req_MVR_bp <- broom.mixed::tidy(req_MVR_fit) %>%
                 dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
@@ -243,11 +243,12 @@ req_MVR_fit_bp2 <- req_MVR_fit_sig %>%
                                            vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 req_MVR_fit_bp2
 ```
+This model identifies total number of federal agencies, the state/territory being Puerto Rico, and emergency declarations as significant predictors of requested FEMA funding. It makes sense that an emergency declaration is a protective factor, as it is a smaller event than a major disaster declaration.
 
 <br>
 
 Predict requested funds from FEMA  based on the model above for the training data set.
-```{r req SLR predict}
+```{r req MVR predict}
 #use predict to predict funds
 stats::predict(req_MVR_fit, req_train_data)
 
@@ -263,11 +264,260 @@ req_MVR_train <- req_MVR_aug %>%
 <br>
 
 Assess goodness of fit measures.
-```{r req SLR eval}
+```{r req MVR eval}
 #using glace
-modelsummary::glance(req_SLR_fit)
+modelsummary::glance(req_MVR_fit)
 
 #using the prediction capacity
-req_SLR_train %>% yardstick::metrics(truth = ReqAmt, estimate = .pred)
+req_MVR_train %>% yardstick::metrics(truth = ReqAmt, estimate = .pred)
+```
+While this is an improvement, it's still not a great model. Let's compare the two side-by-side using RMSE.
+
+---
+
+### Requested Funds: Model Evaluation
+Formally compare the two linear models
+```{r req lm eval}
+#First create comprehensive df with all of the predictions
+req_lm_preds <- bind_rows(req_MVR_train,
+                          req_SLR_train)
+
+#Use the yardstick package to calculate the metrics on resamples
+req_lm_metrics <- req_lm_preds %>%
+                      dplyr::group_by(data, model) %>%
+                      yardstick::metrics(truth = ReqAmt, estimate = .pred)
+
+#for interpretation: rmse = Root Mean Squared Error (RMSE), rsq = R^2, mae = Mean Absolute Error (MAE)
+#make a df that displays RMSE and R^2 for each model and data (all dplyr functions)
+req_lm_RMSE <- req_lm_metrics %>%
+                    filter(.metric == "rmse" | .metric == "rsq") %>%
+                    select(-c(.estimator, data))
+
+#save comparison table
+req_lm_eval_file = here("results", "lm-req-lm-eval.Rds")
+saveRDS(req_lm_RMSE, file = req_lm_eval_file)
+```
+In comparing the two models, the full model certainly improves the fit, but neither is ideal. Alternative models should be considered.
+
+---
+
+## Outcome of Interest: Obligated FEMA Funds
+We will now examine obligated FEMA funds as the outcome of interest.
+
+<br>
+
+### Data Set Up
+Split the data randomly into train and test datasets, and define cross validation
+```{r obl data splitting}
+#fix random numbers by setting the seed (helps reproducibility)
+set.seed(123)
+
+#put 3/4 of data into the training set
+obl_data_split <- rsample::initial_split(obl_data, prop = 3/4)
+
+#create dataframes for the two sets
+obl_train_data <- rsample::training(obl_data_split)
+obl_test_data <- rsample::testing(obl_data_split)
+```
+
+---
+
+### Simple Linear Regression
+Create the SLR using the `tidymodels` setup.
+```{r obl SLR}
+#define lr mod
+lr_mod <- parsnip::linear_reg() %>%
+          parsnip::set_engine("lm")
+
+#define recipe
+obl_SLR_rec <- recipes::recipe(OblAmt ~ IncidentDuration, data = obl_train_data)
+
+#define SLR workflow
+obl_SLR_wflow <- workflows::workflow() %>%
+                   workflows::add_model(lr_mod) %>%
+                   workflows::add_recipe(obl_SLR_rec)
+
+#fit the training data to the workflow
+obl_SLR_fit <- obl_SLR_wflow %>%
+                  parsnip::fit(data = obl_train_data)
+
+#create tibble for model fit using broom and extract
+obl_SLR_fit %>%
+  workflowsets::extract_fit_parsnip() %>%
+  broom::tidy()
+```
+
+<br>
+
+Create box and whisker plot for the fit output.
+```{r obl SLR bp}
+obl_SLR_bp <- broom.mixed::tidy(obl_SLR_fit) %>%
+                dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
+                                   whisker_args = list(color = "blue"),
+                                   vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+obl_SLR_bp
+```
+
+<br>
+
+Predict requested funds from FEMA  based on the model above for the training data set.
+```{r obl SLR predict}
+#use predict to predict funds
+stats::predict(obl_SLR_fit, obl_train_data)
+
+#create df with model predictions and actual measures
+obl_SLR_aug <- augment(obl_SLR_fit, obl_train_data)
+
+#add labeling variables for later summarization
+obl_SLR_train <- obl_SLR_aug %>%
+                    dplyr::mutate(data = "train",
+                                  model = "SLR")
+```
+
+<br>
+
+Assess goodness of fit measures.
+```{r obl SLR eval}
+#using glace
+modelsummary::glance(obl_SLR_fit)
+
+#using the prediction capacity
+obl_SLR_train %>% yardstick::metrics(truth = OblAmt, estimate = .pred)
 ```
 This is a terrible model. Time to try adding more predictors.
+
+---
+
+### Multivariable Linear Regression
+Create the MVR using the `tidymodels` setup.
+```{r obl MVR}
+#define linear mod
+lr_mod <- linear_reg() %>%
+              set_engine("lm")
+
+#define recipe
+obl_MVR_rec <- recipes::recipe(OblAmt ~ ., data = obl_train_data)
+
+#define SLR workflow
+obl_MVR_wflow <- workflows::workflow() %>%
+                   workflows::add_model(lr_mod) %>%
+                   workflows::add_recipe(obl_MVR_rec)
+
+#fit the training data to the workflow
+obl_MVR_fit <- obl_MVR_wflow %>%
+                  parsnip::fit(data = obl_train_data)
+
+#create tibble for model fit using broom and extract
+obl_MVR_fit %>%
+  workflowsets::extract_fit_parsnip() %>%
+  broom::tidy()
+```
+
+<br>
+
+Create box and whisker plot for the fit output.
+```{r obl MVR bp}
+#basic box and whisker plot
+obl_MVR_bp <- broom.mixed::tidy(obl_MVR_fit) %>%
+                dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
+                                   whisker_args = list(color = "blue"),
+                                   vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+obl_MVR_bp
+
+#there's a lot of information here, but hard to identify the ones that are significant due to volume
+
+#box and whisker plot for significant predictors
+#first filter significant results
+obl_MVR_fit_sig <- broom.mixed::tidy(obl_MVR_fit) %>%
+                      dplyr::filter(p.value < 0.05)
+
+#box and whisker plot for lm_fit2 significant predictors
+obl_MVR_fit_bp2 <- obl_MVR_fit_sig %>%
+                        dotwhisker::dwplot(dot_args = list(size = 2, color = "blue"),
+                                           whisker_args = list(color = "blue"),
+                                           vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+obl_MVR_fit_bp2
+```
+This model identifies total number of federal agencies, the state/territory being Puerto Rico, and emergency declarations as significant predictors of obligated FEMA funding. It makes sense that an emergency declaration is a protective factor, as it is a smaller event than a major disaster declaration.
+
+<br>
+
+Predict obligated funds from FEMA  based on the model above for the training data set.
+```{r obl MVR predict}
+#use predict to predict funds
+stats::predict(obl_MVR_fit, obl_train_data)
+
+#create df with model predictions and actual measures
+obl_MVR_aug <- augment(obl_MVR_fit, obl_train_data)
+
+#add labeling variables for later summarization
+obl_MVR_train <- obl_MVR_aug %>%
+                    dplyr::mutate(data = "train",
+                                  model = "MVR")
+```
+
+<br>
+
+Assess goodness of fit measures.
+```{r obl MVR eval}
+#using glace
+modelsummary::glance(obl_MVR_fit)
+
+#using the prediction capacity
+obl_MVR_train %>% yardstick::metrics(truth = OblAmt, estimate = .pred)
+```
+While this is an improvement, it's still not a great model. Let's compare the two side-by-side using RMSE.
+
+---
+
+### Obligated Funds: Model Evaluation
+Formally compare the two linear models
+```{r obl lm eval}
+#First create comprehensive df with all of the predictions
+obl_lm_preds <- bind_rows(obl_MVR_train,
+                          obl_SLR_train)
+
+#Use the yardstick package to calculate the metrics on resamples
+obl_lm_metrics <- obl_lm_preds %>%
+                      dplyr::group_by(data, model) %>%
+                      yardstick::metrics(truth = OblAmt, estimate = .pred)
+
+#for interpretation: rmse = Root Mean Squared Error (RMSE), rsq = R^2, mae = Mean Absolute Error (MAE)
+#make a df that displays RMSE and R^2 for each model and data (all dplyr functions)
+obl_lm_RMSE <- obl_lm_metrics %>%
+                    filter(.metric == "rmse" | .metric == "rsq") %>%
+                    select(-c(.estimator, data))
+
+#save comparison table
+obl_lm_eval_file = here("results", "lm-obl-lm-eval.Rds")
+saveRDS(obl_lm_RMSE, file = obl_lm_eval_file)
+```
+In comparing the two models, the full model certainly improves the fit, but neither is ideal. Alternative models should be considered.
+
+---
+
+## Compare Requested and Obligated Models
+As one last step for the linear models, let's compare the metrics from the obligated and requested funds models.
+```{r lm comp}
+#add outcome labels
+req_lm_RMSE$outcome <- "Requested"
+obl_lm_RMSE$outcome <- "Obligated"
+
+#combine into one table
+lm_comp <- dplyr::bind_rows(req_lm_RMSE,
+                            obl_lm_RMSE)
+
+#clean up the table
+lm_comp$label <- paste(lm_comp$model, lm_comp$.metric, sep=": ")
+
+lm_comp_tbl <- lm_comp %>%
+                  subset(select = -c(1:2))
+
+lm_comp_table <- xtabs(.estimate ~ label + outcome, lm_comp_tbl)
+lm_comp_table
+
+#save file
+lm_eval_file = here("results", "lm-eval.Rds")
+saveRDS(lm_comp_table, file = lm_eval_file)
+```
+The two outcomes yield virtually identical models.

@@ -87,12 +87,11 @@ summarytools::dfSummary(EDAdata)
 ```
 Looking at the output of `summarytools::dfsummary()`
 
-* There are 445 distinct disaster numbers across 2012 - 2021. 
-* `OblAmt` ranges from -\$855,200.3 to \$4,408,424,297.
-* `ReqAmt` ranges from -\$855,200.3 to \$4,388,540,486.
-* `ResponseDays` are missing 72% of the time, which suggests it should not be included in the analysis.
+* There are 445 distinct disaster numbers across 2012 - 2021
+* `OblAmt` ranges from -\$855,200.3 to \$4,408,424,297
+* `ReqAmt` ranges from -\$855,200.3 to \$4,388,540,486
 * There are 16 possible incident types
-* There is a clear effect of both incident month and incident year.
+* There is a clear effect of both incident month and incident year
 
 Let's dive a little deeper into each variable.
 
@@ -1206,6 +1205,82 @@ saveRDS(decs_hm, file = decs_hm_file)
 
 ---
 
+## Predictor: Response Duration
+```{r}
+#summary statistics since it's continuous
+base::summary(EDAdata$ResponseDays)
+#NAs are ongoing events
+
+#density plot
+ggplot2::ggplot(data = EDAdata, aes(x = ResponseDays)) +
+  geom_density()
+
+#normal boxplot
+ggplot2::ggplot(data = EDAdata, aes(y = ResponseDays)) +
+  geom_boxplot()
+
+##QQ plot
+car::qqPlot(EDAdata$ResponseDays)
+
+#examine graphical relationship with outcomes of interest
+req_fig_resp <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = ResponseDays)) +
+                      geom_point(aes(y = ReqAmt),
+                                 color = "tomato",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Response Duration (Days)",
+                           y = "Funds ($)",
+                           subtitle = "Requested")
+req_fig_resp
+
+#repeat for obligated funds
+obl_fig_resp <- EDAdata %>%
+                    ggplot2::ggplot(aes(x = ResponseDays)) +
+                      geom_point(aes(y = OblAmt),
+                                 color = "turquoise4",
+                                 show.legend = FALSE) +
+                      scale_y_continuous(expand = c(0, 0),
+                                         limits = c(0, 1000000000),
+                                         labels = scales::dollar_format()) +
+                      labs(x = "Response Duration (Days)",
+                           y = "Funds ($)",
+                           subtitle = "Obligated")
+obl_fig_resp
+
+#combine into one plot
+plot_col7 <- cowplot::plot_grid(req_fig_resp, 
+                                     obl_fig_resp,
+                                     ncol = 1,
+                                     align = "v",
+                                     rel_heights = c(0.5,0.5))
+plot_col7
+
+
+title8 <- cowplot::ggdraw() + 
+                    draw_label(
+                      "Requested vs obligated FEMA funds by response duration (Under $1B)",
+                      fontface = 'bold',
+                      x = 0,
+                      hjust = 0) +
+                    theme( plot.margin = margin(0, 0, 0, 7))
+
+funds_fig_resp <- cowplot::plot_grid(
+                              title8, plot_col7,
+                              ncol = 1,
+                              # rel_heights values control vertical title margins
+                              rel_heights = c(0.1, 1))
+funds_fig_resp
+
+#save file
+funds_resp_fig_file = here("results","funds-resp.png")
+ggsave(filename = funds_resp_fig_file, plot = funds_fig_resp)
+```
+
+---
+
 ## Create "Table 1"
 Make the summary table for the manuscript. Variables to include:
 
@@ -1215,6 +1290,7 @@ Make the summary table for the manuscript. Variables to include:
 * declarationType
 * incidentType
 * IncidentDuration
+* ResponseDays
 * IH
 * PA
 * HM
@@ -1242,6 +1318,7 @@ table1::label(EDAdata$IncidentMonth) <- "Declaration Month"
 table1::label(EDAdata$declarationType) <- "Declaration Type"
 table1::label(EDAdata$incidentType) <- "Incident Type"
 table1::label(EDAdata$IncidentDuration) <- "Incident Duration"
+table1::label(EDAdata$ResponseDays) <- "Response Duration"
 table1::label(EDAdata$Population) <- "State Population"
 table1::label(EDAdata$Counties) <- "Counties per State"
 table1::label(EDAdata$TotalAgencies) <- "Federal Agencies Involved"
@@ -1254,10 +1331,11 @@ table1::label(EDAdata$OblAmt) <- "Obligated FEMA Funds"
 
 #specify units
 table1::units(EDAdata$IncidentDuration) <- "days"
+table1::units(EDAdata$ResponseDays) <- "days"
 
 #create table
 table1 <- table1::table1(~ ReqAmt + OblAmt + state + IncidentYear + IncidentMonth + declarationType + incidentType +
-                           IncidentDuration + IH + PA + HM + Population + Counties + TotalAgencies + FEMACSAvg,
+                           IncidentDuration + ResponseDays + IH + PA + HM + Population + Counties + TotalAgencies + FEMACSAvg,
                           data = EDAdata)
 
 #save file

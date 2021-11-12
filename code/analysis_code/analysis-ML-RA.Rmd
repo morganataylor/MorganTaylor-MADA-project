@@ -1,0 +1,267 @@
+---
+title: "Analysis: Machine Learning - ReqAmt"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+
+---
+
+## Introduction
+
+This script uses requested FEMA funds as the outcome of interest and fits the following models to the analysis data:
+
+* Null
+* Decision Tree
+* LASSO
+* Random Forest. 
+
+It compares the  models, and then finally fits the “best” model to the test data.
+
+<br>
+
+Follow the previous processing and analysis markdowns to generate the analysis data used here.
+
+<br>
+
+Each model will follow this process:
+
+1. Model Specification
+2. Workflow Definition
+3. Tuning Grid Specification
+4. Tuning Using Cross-Validation and the tune_grid() function
+5. Identify Best Model
+6. Model Evaluation
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for data loading/saving
+* tidyverse: for data management
+* tidymodels: for data modeling
+* skimr: for variable summaries
+* broom.mixed: for converting bayesian models to tidy tibbles
+* rpart.plot: for visualizing a decision tree
+* vip: for variable importance plots
+* glmnet: for lasso models
+* doParallel: for parallel backend for tuning processes
+* ranger: for random forest models
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #for data loading/saving
+library(tidyverse) #for data management
+library(tidymodels) #for data modeling
+library(skimr) #for variable summaries
+library(broom.mixed) #for converting bayesian models to tidy tibbles
+library(rpart.plot) #for visualizing a decision tree
+library(vip) #for variable importance plots
+library(glmnet) #for lasso models
+library(doParallel) #for parallel backend for tuning processes
+library(ranger) #for random forest models
+
+#global environment options
+# formatting for script to avoid scientific notation output
+options(scipen=999)
+```
+
+---
+
+## Load Data
+Load the analysis data from the `processed_data` folder in the project file.
+```{r load data}
+#path to data
+#note the use of the here() package and not absolute paths
+data_location <- here::here("data","processed_data","analysisdata.rds")
+
+#load data. 
+analysisdata <- readRDS(data_location)
+
+#summary of data using skimr package
+skimr::skim(analysisdata)
+```
+
+---
+
+## Data Setup
+We will specify the following parameters:
+
+* Drop the unused variables
+* Transform Incident Month into ordinal variable
+* Set the random seed to 123
+* Split the dataset into 70% training, 30% testing, stratified on ReqAmt
+* 5-fold cross validation, 5 times repeated, stratified on ReqAmt for the CV folds
+* Create a recipe for data and fitting that codes categorical variables as dummy variables
+```{r data setup}
+#requested amount filter
+req_data <- analysisdata %>%
+              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
+                            Population, Counties, TotalAgencies, FEMACSAvg, ReqAmt)
+
+#transform incident month into ordinal variable
+req_data$IncidentMonth <- ordered(req_data$IncidentMonth, levels = 1:12,
+                                  labels = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))
+
+#set random seed
+set.seed(123)
+
+#split dataset into 70% training, 30% testing
+#use ReqAmt as stratification
+req_data_split <- rsample::initial_split(req_data, prop = 7/10,
+                                     strata = c(ReqAmt, state, incidentType))
+
+#optional tag row for later identification: 
+req_data$rowid<-1:nrow(req_data)
+dplyr_stratified <- function(df, percent, ...){
+  columns<-enquos(...)
+   #group then sample each group
+  out<-df %>% group_by(!!!columns)  %>% slice( sample(1:n(), percent*n())) 
+}
+
+train_group <- dplyr_stratified(req_data, 0.9, state, incidentType)
+train_group
+
+test_group <- dplyr_stratified(req_data, 0.5, state, incidentType)
+test_group
+
+#create dataframes for the two sets:
+req_train_data <- rsample::training(req_data_split)
+req_test_data <- rsample::testing(req_data_split)
+
+#training set proportions by ReqAmt
+req_train_data %>%
+      dplyr::count(ReqAmt) %>%
+      dplyr::mutate(prop = n / sum(n))
+
+#testing set proportions by ReqAmt
+req_test_data %>%
+      dplyr::count(ReqAmt) %>%
+      dplyr::mutate(prop = n / sum(n))
+
+#5-fold cross validation, 5 times repeated, stratified on `ReqAmt` for the CV folds
+req_folds <- rsample::vfold_cv(req_train_data,
+                               v = 5,
+                               repeats = 5,
+                               strata = ReqAmt)
+  
+#create recipe that codes categorical variables as dummy variables
+RA_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data) %>%
+          recipes::step_dummy(all_nominal_predictors())
+```
+
+---
+
+## Null Model
+Determine the performance of a null model (i.e. one with no predictors) and compute the RMSE for both training and test data.
+```{r null model}
+#create null model
+null_mod <- parsnip::null_model() %>%
+            parsnip::set_engine("parsnip") %>%
+            parsnip::set_mode("regression")
+
+#add recipe and model into workflow
+null_wflow <- workflows::workflow() %>%
+              workflows::add_recipe(RA_rec) %>%
+              workflows::add_model(null_mod)
+
+#"fit" model to training data
+req_null_train <- null_wflow %>%
+                  parsnip::fit(data = req_train_data)
+
+#summary of null model with training data to get mean (which in this case is the RMSE)
+req_null_train_sum <- broom.mixed::tidy(req_null_train)
+req_null_train_sum
+
+#RMSE for training data for formatting later
+req_null_RMSE_train <- tibble::tibble(
+                          rmse = rmse_vec(truth = req_train_data$ReqAmt,
+                                              estimate = rep(mean(req_train_data$ReqAmt), nrow(req_train_data))),
+                          SE = 0,
+                          model = "Null - Train")
+
+#"fit" model to test data
+req_null_test <- null_wflow %>%
+                  parsnip::fit(data = req_test_data)
+
+#summary of null model with test data to get mean (which in this case is the RMSE)
+req_null_test_sum <- broom.mixed::tidy(req_null_test)
+req_null_test_sum
+
+#RMSE for testing data for formatting later
+req_null_RMSE_test <- tibble::tibble(
+                          rmse = rmse_vec(truth = req_test_data$ReqAmt,
+                                              estimate = rep(mean(req_test_data$ReqAmt), nrow(req_test_data))),
+                          SE = 0,
+                          model = "Null - Test")
+```
+
+---
+
+## LASSO Model
+
+<br>
+
+### 1. Model Specification
+```{r lasso model specification}
+#define the lasso model
+#mixture = 1 identifies the model to be a LASSO model
+lasso_mod <-
+  parsnip::linear_reg(mode = "regression",
+                      penalty = tune(), 
+                      mixture = 1) %>%
+  parsnip::set_engine("glmnet")
+
+#use the recipe specified earlier
+```
+
+<br>
+
+### 2. Workflow Definition
+```{r lasso wflow def}
+#define workflow for lasso regression
+lasso_wflow <- workflows::workflow() %>%
+               workflows::add_model(lasso_mod) %>%
+               workflows::add_recipe(RA_rec)
+```
+
+<br>
+
+### 3. Tuning Grid Specification
+```{r lasso tune grid spec}
+#tuning grid specification
+lasso_grid <- grid_regular(penalty(), levels = 10)
+
+#5 lowest penalty values
+lasso_grid %>%
+  dplyr::top_n(-5)
+
+#5 highest penalty values
+lasso_grid %>%
+  dplyr::top_n(5)
+```
+
+<br>
+
+### 4. Tuning Using Cross-Validation and the `tune_grid()` function 
+```{r lasso tuning}
+#tune the model with previously specified cross-validation and RMSE as target metric
+lasso_res <- lasso_wflow %>%
+                tune::tune_grid(resamples = req_folds,
+                                grid = lasso_grid,
+                                control = control_grid(verbose = TRUE, 
+                                                       save_pred = TRUE),
+                                metrics = metric_set(rmse))
+
+#look at 15 models with lowest RMSEs
+top_lasso_models <- lasso_res %>%
+                      tune::show_best("rmse", n = 15) %>%
+                      dplyr::arrange(penalty)
+top_lasso_models
+
+#default visualization
+lasso_res %>% autoplot()
+```

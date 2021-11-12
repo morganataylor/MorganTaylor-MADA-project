@@ -135,12 +135,20 @@ The next step is to conduct some feature engineering to create variables that re
 #use `difftime` function to find the number of days 
 #response days will be absurdly long, but keeping the same to maintain units
 declarations_3 <- declarations_2 %>%
-                    dplyr::mutate(IncidentDuration = difftime(incidentEndDate,
+                    dplyr::mutate(IncidentDuration = ifelse(is.na(incidentEndDate),
+                                                            difftime("2021-11-10T00:00:00.000Z",
+                                                                     incidentBeginDate,
+                                                                     units = c("days")),
+                                                            difftime(incidentEndDate,
                                                               incidentBeginDate,
-                                                              units = c("days")),
-                                  ResponseDays = difftime(disasterCloseoutDate,
-                                                          incidentBeginDate,
-                                                          units = c("days")))
+                                                              units = c("days"))),
+                                  ResponseDays = ifelse(is.na(disasterCloseoutDate),
+                                                        difftime("2021-11-10T00:00:00.000Z",
+                                                                 incidentBeginDate,
+                                                                 units = c("days")),
+                                                        difftime(disasterCloseoutDate,
+                                                                incidentBeginDate,
+                                                                units = c("days"))))
 ```
 
 ---
