@@ -1,5 +1,5 @@
 ---
-title: "Analysis: Machine Learning - ReqAmt"
+title: "Analysis: Machine Learning - OblAmt"
 output: 
   html_document:
     theme: flatly
@@ -10,7 +10,7 @@ output:
 
 ## Introduction
 
-This script uses requested FEMA funds as the outcome of interest and fits the following models to the analysis data:
+This script uses obligated FEMA funds as the outcome of interest and fits the following models to the analysis data:
 
 * Null
 * Decision Tree
@@ -101,77 +101,77 @@ We will specify the following parameters:
 * Create a recipe for data and fitting that codes categorical variables as dummy variables
 ```{r data setup}
 #requested amount filter
-req_data <- analysisdata %>%
+obl_data <- analysisdata %>%
               dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
-                            Population, Counties, TotalAgencies, FEMACSAvg, ReqAmt)
+                            Population, Counties, TotalAgencies, FEMACSAvg, OblAmt)
 
 #transform incident month into ordinal variable
-req_data$IncidentMonth <- ordered(req_data$IncidentMonth, levels = 1:12,
+obl_data$IncidentMonth <- ordered(obl_data$IncidentMonth, levels = 1:12,
                                   labels = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))
 
 #not enough values per state, so create a variable that is FEMA Regions
-req_data$FEMARegion <- ifelse((req_data$state == "CT" |
-                                 req_data$state == "ME" |
-                                 req_data$state == "MA" |
-                                 req_data$state == "NH" |
-                                 req_data$state == "RI" |
-                                 req_data$state == "VT"),
+obl_data$FEMARegion <- ifelse((obl_data$state == "CT" |
+                                 obl_data$state == "ME" |
+                                 obl_data$state == "MA" |
+                                 obl_data$state == "NH" |
+                                 obl_data$state == "RI" |
+                                 obl_data$state == "VT"),
                               "Region I",
-                              ifelse((req_data$state == "NJ" |
-                                         req_data$state == "NY" |
-                                         req_data$state == "PR" |
-                                         req_data$state == "VI"),
+                              ifelse((obl_data$state == "NJ" |
+                                         obl_data$state == "NY" |
+                                         obl_data$state == "PR" |
+                                         obl_data$state == "VI"),
                                       "Region II",
-                                       ifelse((req_data$state == "DE" |
-                                                 req_data$state == "MD" |
-                                                 req_data$state == "PA" |
-                                                 req_data$state == "VA" |
-                                                 req_data$state == "DC" |
-                                                 req_data$state == "WV"),
+                                       ifelse((obl_data$state == "DE" |
+                                                 obl_data$state == "MD" |
+                                                 obl_data$state == "PA" |
+                                                 obl_data$state == "VA" |
+                                                 obl_data$state == "DC" |
+                                                 obl_data$state == "WV"),
                                               "Region III",
-                                               ifelse((req_data$state == "AL" |
-                                                         req_data$state == "FL" |
-                                                         req_data$state == "GA" |
-                                                         req_data$state == "KY" |
-                                                         req_data$state == "MS" |
-                                                         req_data$state == "NC" |
-                                                         req_data$state == "SC" |
-                                                         req_data$state == "TN"),
+                                               ifelse((obl_data$state == "AL" |
+                                                         obl_data$state == "FL" |
+                                                         obl_data$state == "GA" |
+                                                         obl_data$state == "KY" |
+                                                         obl_data$state == "MS" |
+                                                         obl_data$state == "NC" |
+                                                         obl_data$state == "SC" |
+                                                         obl_data$state == "TN"),
                                                       "Region IV",
-                                                      ifelse((req_data$state == "IL" |
-                                                               req_data$state == "IN" |
-                                                               req_data$state == "MI" |
-                                                               req_data$state == "MN" |
-                                                               req_data$state == "OH" |
-                                                               req_data$state == "WI"),
+                                                      ifelse((obl_data$state == "IL" |
+                                                               obl_data$state == "IN" |
+                                                               obl_data$state == "MI" |
+                                                               obl_data$state == "MN" |
+                                                               obl_data$state == "OH" |
+                                                               obl_data$state == "WI"),
                                                             "Region V",
-                                                             ifelse((req_data$state == "AR" |
-                                                                         req_data$state == "LA" |
-                                                                         req_data$state == "NM" |
-                                                                         req_data$state == "OK" |
-                                                                         req_data$state == "TX"),
+                                                             ifelse((obl_data$state == "AR" |
+                                                                         obl_data$state == "LA" |
+                                                                         obl_data$state == "NM" |
+                                                                         obl_data$state == "OK" |
+                                                                         obl_data$state == "TX"),
                                                                       "Region VI",
-                                                                       ifelse((req_data$state == "IA" |
-                                                                                 req_data$state == "KS" |
-                                                                                 req_data$state == "MO" |
-                                                                                 req_data$state == "NE"),
+                                                                       ifelse((obl_data$state == "IA" |
+                                                                                 obl_data$state == "KS" |
+                                                                                 obl_data$state == "MO" |
+                                                                                 obl_data$state == "NE"),
                                                                               "Region VII",
-                                                                               ifelse((req_data$state == "CO" |
-                                                                                         req_data$state == "MT" |
-                                                                                         req_data$state == "ND" |
-                                                                                         req_data$state == "SD" |
-                                                                                         req_data$state == "UT" |
-                                                                                         req_data$state == "WY"),
+                                                                               ifelse((obl_data$state == "CO" |
+                                                                                         obl_data$state == "MT" |
+                                                                                         obl_data$state == "ND" |
+                                                                                         obl_data$state == "SD" |
+                                                                                         obl_data$state == "UT" |
+                                                                                         obl_data$state == "WY"),
                                                                                       "Region VIII",
-                                                                                       ifelse((req_data$state == "AZ" |
-                                                                                                 req_data$state == "CA" |
-                                                                                                 req_data$state == "HI" |
-                                                                                                 req_data$state == "NV"),
+                                                                                       ifelse((obl_data$state == "AZ" |
+                                                                                                 obl_data$state == "CA" |
+                                                                                                 obl_data$state == "HI" |
+                                                                                                 obl_data$state == "NV"),
                                                                                               "Region IX",
-                                                                                               ifelse((req_data$state == "AK" |
-                                                                                                         req_data$state == "ID" |
-                                                                                                         req_data$state == "OR" |
-                                                                                                         req_data$state == "WA"),
+                                                                                               ifelse((obl_data$state == "AK" |
+                                                                                                         obl_data$state == "ID" |
+                                                                                                         obl_data$state == "OR" |
+                                                                                                         obl_data$state == "WA"),
                                                                                                       "Region X",
                                                                                                       NA
                                                                                                       )
@@ -186,38 +186,38 @@ req_data$FEMARegion <- ifelse((req_data$state == "CT" |
                               )
 
 #drop state variable
-req_data <- req_data %>%
+obl_data <- obl_data %>%
               dplyr::select(-c(state))
 
 #add to "other" category for incident Types that are infrequent
-req_data$incidentType[(req_data$incidentType == "Chemical" |
-                        req_data$incidentType == "Coastal Storm" |
-                        req_data$incidentType == "Dam/Levee Break" |
-                        req_data$incidentType == "Mud/Landslide" |
-                        req_data$incidentType == "Volcano" |
-                        req_data$incidentType == "Terrorist" |
-                        req_data$incidentType == "Snow")] <- "Other"
+obl_data$incidentType[(obl_data$incidentType == "Chemical" |
+                        obl_data$incidentType == "Coastal Storm" |
+                        obl_data$incidentType == "Dam/Levee Break" |
+                        obl_data$incidentType == "Mud/Landslide" |
+                        obl_data$incidentType == "Volcano" |
+                        obl_data$incidentType == "Terrorist" |
+                        obl_data$incidentType == "Snow")] <- "Other"
 
 #set random seed
 set.seed(123)
 
 #split dataset into 66.6% training, 33.3% testing
 #use incidentType as stratification
-req_data_split <- rsample::initial_split(req_data, prop = 2/3,
+obl_data_split <- rsample::initial_split(obl_data, prop = 2/3,
                                      strata = incidentType)
 
 #create dataframes for the two sets:
-req_train_data <- rsample::training(req_data_split)
-req_test_data <- rsample::testing(req_data_split)
+obl_train_data <- rsample::training(obl_data_split)
+obl_test_data <- rsample::testing(obl_data_split)
 
 #5-fold cross validation, repeated 5 times, stratified by incidentType
-req_folds <- rsample::vfold_cv(req_train_data,
+obl_folds <- rsample::vfold_cv(obl_train_data,
                                strata = incidentType,
                                v = 5,
                                repeats = 5)
 
 #create recipe that codes categorical variables as dummy variables
-RA_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data) %>%
+OA_rec <- recipes::recipe(OblAmt ~ ., data = obl_train_data) %>%
           recipes::step_dummy(all_nominal_predictors())
 ```
 
@@ -233,36 +233,36 @@ null_mod <- parsnip::null_model() %>%
 
 #add recipe and model into workflow
 null_wflow <- workflows::workflow() %>%
-              workflows::add_recipe(RA_rec) %>%
+              workflows::add_recipe(OA_rec) %>%
               workflows::add_model(null_mod)
 
 #"fit" model to training data
-req_null_train <- null_wflow %>%
-                  parsnip::fit(data = req_train_data)
+obl_null_train <- null_wflow %>%
+                  parsnip::fit(data = obl_train_data)
 
 #summary of null model with training data to get mean (which in this case is the RMSE)
-req_null_train_sum <- broom.mixed::tidy(req_null_train)
-req_null_train_sum
+obl_null_train_sum <- broom.mixed::tidy(obl_null_train)
+obl_null_train_sum
 
 #RMSE for training data for formatting later
-req_null_RMSE_train <- tibble::tibble(
-                          rmse = rmse_vec(truth = req_train_data$ReqAmt,
-                                              estimate = rep(mean(req_train_data$ReqAmt), nrow(req_train_data))),
+obl_null_RMSE_train <- tibble::tibble(
+                          rmse = rmse_vec(truth = obl_train_data$OblAmt,
+                                              estimate = rep(mean(obl_train_data$OblAmt), nrow(obl_train_data))),
                           SE = 0,
                           model = "Null - Train")
 
 #"fit" model to test data
-req_null_test <- null_wflow %>%
-                  parsnip::fit(data = req_test_data)
+obl_null_test <- null_wflow %>%
+                  parsnip::fit(data = obl_test_data)
 
 #summary of null model with test data to get mean (which in this case is the RMSE)
-req_null_test_sum <- broom.mixed::tidy(req_null_test)
-req_null_test_sum
+obl_null_test_sum <- broom.mixed::tidy(obl_null_test)
+obl_null_test_sum
 
 #RMSE for testing data for formatting later
-req_null_RMSE_test <- tibble::tibble(
-                          rmse = rmse_vec(truth = req_test_data$ReqAmt,
-                                              estimate = rep(mean(req_test_data$ReqAmt), nrow(req_test_data))),
+obl_null_RMSE_test <- tibble::tibble(
+                          rmse = rmse_vec(truth = obl_test_data$OblAmt,
+                                              estimate = rep(mean(obl_test_data$OblAmt), nrow(obl_test_data))),
                           SE = 0,
                           model = "Null - Test")
 ```
@@ -300,7 +300,7 @@ tree_mod <-
 #define workflow for tree
 tree_wflow <- workflows::workflow() %>%
                workflows::add_model(tree_mod) %>%
-               workflows::add_recipe(RA_rec)
+               workflows::add_recipe(OA_rec)
 ```
 
 ---
@@ -324,7 +324,7 @@ tree_grid %>%
 ```{r}
 #tune the model with previously specified cross-validation and RMSE as target metric
 tree_res <- tree_wflow %>%
-                tune::tune_grid(resamples = req_folds,
+                tune::tune_grid(resamples = obl_folds,
                                 grid = tree_grid,
                                 control = control_grid(verbose = TRUE),
                                 metrics = yardstick::metric_set(rmse))
@@ -337,7 +337,7 @@ DT_auto_plot <- tree_res %>% autoplot()
 DT_auto_plot
 
 #save file
-DT_auto_fig_file = here("results","DT-auto-plot.png")
+DT_auto_fig_file = here("results","DT-auto-plot-obl.png")
 ggsave(filename = DT_auto_fig_file, plot = DT_auto_plot)
 
 #more detailed plot
@@ -353,8 +353,8 @@ DT_detail_plot <- tree_res %>%
 DT_detail_plot
 
 #save file
-DT_det_fig_file = here("results","DT-det-plot.png")
-ggsave(filename = DT_det_fig_file, plot = DT_detail_plot)
+DT_detail_fig_file = here("results","DT-det-plot-obl.png")
+ggsave(filename = DT_detail_fig_file, plot = DT_detail_plot)
 
 ```
 
@@ -373,7 +373,7 @@ best_tree_wflow
 
 #one last fit on the training data
 best_tree_fit <- best_tree_wflow %>%
-                    parsnip::fit(data = req_train_data)
+                    parsnip::fit(data = obl_train_data)
 ```
 
 ---
@@ -382,31 +382,31 @@ best_tree_fit <- best_tree_wflow %>%
 ```{r}
 #plot the tree
 rpart.plot::rpart.plot(x = workflowsets::extract_fit_parsnip(best_tree_fit)$fit,
-                                                     roundint = F,
-                                                     type = 5,
-                                                     digits = 5,
-                                                     main = "Selected Decision Tree Model")
-#save manually -- ggsave throws an error
+                                         roundint = F,
+                                         type = 5,
+                                         digits = 5,
+                                         main = "Selected Decision Tree Model")
+#save file manually -- ggsave throws an error
 
 
 #find predictions and intervals
 tree_resid <- best_tree_fit %>%
-                  broom.mixed::augment(new_data = req_train_data) %>%
-                  dplyr::select(.pred, ReqAmt) %>%
-                  dplyr::mutate(.resid = .pred - ReqAmt)
+                  broom.mixed::augment(new_data = obl_train_data) %>%
+                  dplyr::select(.pred, OblAmt) %>%
+                  dplyr::mutate(.resid = .pred - OblAmt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline draws a 45 degree line, along which the results should fall
-DT_pred_act <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = ReqAmt)) +
+DT_pred_act <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = OblAmt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
                         geom_point() +
-                        labs(title = "Decision Tree Fit: Predicted vs. Actual Requested Funds",
-                              x = "Predicted Requested Funds ($)",
-                              y = "Actual Requested Funds ($)")
+                        labs(title = "Decision Tree Fit: Predicted vs. Actual Obligated Funds",
+                              x = "Predicted Obligated Funds ($)",
+                              y = "Actual Obligated Funds ($)")
 DT_pred_act
 
 #save file
-DT_pred_act_file = here("results","DT-pred-act.png")
+DT_pred_act_file = here("results","DT-pred-act-obl.png")
 ggsave(filename = DT_pred_act_file, plot = DT_pred_act)
 
 #plot model with residuals
@@ -420,7 +420,7 @@ DT_resid <- ggplot2::ggplot(tree_resid, aes(x = as.numeric(row.names(tree_resid)
 DT_resid
 
 #save file
-DT_resid_file = here("results","DT-resid.png")
+DT_resid_file = here("results","DT-resid-obl.png")
 ggsave(filename = DT_resid_file, plot = DT_resid)
 
 #plot model fit vs residuals
@@ -428,13 +428,13 @@ ggsave(filename = DT_resid_file, plot = DT_resid)
 DT_pred_resid <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
                           geom_point() +
-                          labs(title = "Decision Tree Fit: Residuals vs Fitted Requested Funds",
-                                x = "Predicted Requested Funds ($)",
+                          labs(title = "Decision Tree Fit: Residuals vs Fitted Obligated Funds",
+                                x = "Predicted Obligated Funds ($)",
                                 y = "Residual")
 DT_pred_resid
 
 #save file
-DT_pred_resid_file = here("results","DT-pred-resid.png")
+DT_pred_resid_file = here("results","DT-pred-resid-obl.png")
 ggsave(filename = DT_pred_resid_file, plot = DT_pred_resid)
 
 #print model performance
@@ -457,11 +457,9 @@ tree_RMSE <- tree_res %>%
                   rmse = round(mean, 3),
                   SE = round(std_err, 4),
                   model = "Tree") %>%
-               dplyr::bind_rows(req_null_RMSE_train)
+               dplyr::bind_rows(obl_null_RMSE_train)
 tree_RMSE
 ```
-
-The identified best performing tree model has some interesting results. It identifies incident duration, state population, total number of federal agencies, total number of state counties, and individual/households program awardance as significant decision points for predicting requesting FEMA funding. All of these variables are to be expected, but it is interesting that incident type or declaration type are not included as significant. The RMSE is improved from the Null model, but there's still opportunity for improvement. Let's try another model. 
 
 <br>
 
@@ -503,7 +501,7 @@ RF_mod %>% tune::parameters()
 #define workflow for RF regression
 RF_wflow <- workflows::workflow() %>%
                workflows::add_model(RF_mod) %>%
-               workflows::add_recipe(RA_rec)
+               workflows::add_recipe(OA_rec)
 ```
 
 ---
@@ -522,7 +520,7 @@ RF_grid <- expand.grid(mtry = c(3, 4, 5, 6),
 ```{r}
 #tune the model with previously specified cross-validation and RMSE as target metric
 RF_res <- RF_wflow %>%
-              tune::tune_grid(resamples = req_folds,
+              tune::tune_grid(resamples = obl_folds,
                               grid = RF_grid,
                               control = control_grid(verbose = TRUE, save_pred = TRUE),
                               metrics = metric_set(rmse))
@@ -537,7 +535,7 @@ RF_auto_plot <- RF_res %>% autoplot()
 RF_auto_plot
 
 #save file
-RF_auto_fig_file = here("results","RF-auto-plot.png")
+RF_auto_fig_file = here("results","RF-auto-plot-obl.png")
 ggsave(filename = RF_auto_fig_file, plot = RF_auto_plot)
 ```
 
@@ -556,7 +554,7 @@ best_RF_wflow
 
 #one last fit on the training data
 best_RF_fit <- best_RF_wflow %>%
-                    parsnip::fit(data = req_train_data)
+                    parsnip::fit(data = obl_train_data)
 ```
 
 ---
@@ -570,26 +568,25 @@ x_RF <- best_RF_fit$fit$fit$fit
 RF_plot <- vip::vip(x_RF, num_features = 20)
 RF_plot
 
-#save manually-- ggsave throws errors
+#save  manually - ggsave throws an error
 
 #find predictions and intervals
 RF_resid <- best_RF_fit %>%
-                broom.mixed::augment(new_data = req_train_data) %>%
-                dplyr::select(.pred, ReqAmt) %>%
-                dplyr::mutate(.resid = .pred - ReqAmt)
+                broom.mixed::augment(new_data = obl_train_data) %>%
+                dplyr::select(.pred, OblAmt) %>%
+                dplyr::mutate(.resid = .pred - OblAmt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline is a 45 degree line, along which the results should fall
-RF_pred_act <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = ReqAmt)) +
+RF_pred_act <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = OblAmt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) +
                         geom_point() +
-                        labs(title = "RF Fit: Actual vs. Predicted Requested Funds",
-                              x = "Predicted Requested Funds ($)",
-                              y = "Actual Requested Funds ($)")
-RF_pred_act
+                        labs(title = "RF Fit: Actual vs. Predicted Obligated Funds",
+                              x = "Predicted Obligated Funds ($)",
+                              y = "Actual Obligated Funds ($)")
 
 #save file
-RF_pred_act_file = here("results","RF-pred-act.png")
+RF_pred_act_file = here("results","RF-pred-act-obl.png")
 ggsave(filename = RF_pred_act_file, plot = RF_pred_act)
 
 #plot model with residuals
@@ -603,7 +600,7 @@ RF_resids <- ggplot2::ggplot(RF_resid, aes(x = as.numeric(row.names(RF_resid)), 
 RF_resids
 
 #save file
-RF_resid_file = here("results","RF-resid.png")
+RF_resid_file = here("results","RF-resid-obl.png")
 ggsave(filename = RF_resid_file, plot = RF_resids)
 
 #plot model fit vs residuals
@@ -611,13 +608,13 @@ ggsave(filename = RF_resid_file, plot = RF_resids)
 RF_pred_resid <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
                           geom_point() +
-                          labs(title = "Random Forest Fit: Residuals vs Fitted Requested Funds",
+                          labs(title = "Random Forest Fit: Residuals vs Fitted Obligated Funds",
                                 x = "Fitted Requested Funds ($)",
                                 y = "Residual")
 RF_pred_resid
 
 #save file
-RF_pred_resid_file = here("results","RF-pred-resid.png")
+RF_pred_resid_file = here("results","RF-pred-resid-obl.png")
 ggsave(filename = RF_pred_resid_file, plot = RF_pred_resid)
 
 #print the 10 best performing hyperparameter sets
@@ -640,8 +637,6 @@ RF_RMSE <- RF_res %>%
 RF_RMSE
 ```
 
-In examining the results of the RF model within the context of RMSE, it performs marginally better than the decision tree. Interestingly, it includes declaration month of Jan - March as more important than state population. Let's try one more model.
-
 ---
 
 ## Bagged Decision Tree Model
@@ -663,7 +658,7 @@ registerDoParallel(cl)
 set.seed(20140102)
 
 #use bootstrap instead of CV
-req_data_bootsplit <- req_train_data %>%
+obl_data_bootsplit <- obl_train_data %>%
                         rsample::bootstraps(times = 10,
                                             strata = "incidentType")
 
@@ -676,7 +671,7 @@ bag_tree_mod <- baguette::bag_tree(cost_complexity = tune(),
                 parsnip::set_mode("regression")
 
 #create recipe that codes categorical variables as dummy variables
-BT_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data) %>%
+BT_rec <- recipes::recipe(OblAmt ~ ., data = obl_train_data) %>%
           step_string2factor(all_nominal())
 ```
 ---
@@ -712,7 +707,7 @@ BT_res <- baguette::bag_tree(cost_complexity = tune(),
                               times = 10) %>%
           parsnip::set_mode("regression") %>%
           tune::tune_grid(preprocessor = BT_rec,
-                          resamples = req_data_bootsplit,
+                          resamples = obl_data_bootsplit,
                           grid = tree_grid,
                           metrics = metric_set(rmse))
 
@@ -724,7 +719,7 @@ BT_auto_plot <- BT_res %>% autoplot()
 BT_auto_plot
 
 #save file
-BT_auto_fig_file = here("results","BT-auto-plot.png")
+BT_auto_fig_file = here("results","BT-auto-plot-obl.png")
 ggsave(filename = BT_auto_fig_file, plot = BT_auto_plot)
 
 #more detailed plot
@@ -740,7 +735,7 @@ BT_det_plot <- BT_res %>%
 BT_det_plot
 
 #save file
-BT_det_fig_file = here("results","BT-det-plot.png")
+BT_det_fig_file = here("results","BT-det-plot-obl.png")
 ggsave(filename = BT_det_fig_file, plot = BT_det_plot)
 ```
 
@@ -759,7 +754,7 @@ best_BT_wflow
 
 #one last fit on the training data
 best_BT_fit <- best_BT_wflow %>%
-                    parsnip::fit(data = req_train_data)
+                    parsnip::fit(data = obl_train_data)
 ```
 
 ---
@@ -773,22 +768,22 @@ x_BT <- best_BT_fit$fit$fit$fit
 
 #find predictions and intervals
 BT_resid <- best_BT_fit %>%
-                  broom.mixed::augment(new_data = req_train_data) %>%
-                  dplyr::select(.pred, ReqAmt) %>%
-                  dplyr::mutate(.resid = .pred - ReqAmt)
+                  broom.mixed::augment(new_data = obl_train_data) %>%
+                  dplyr::select(.pred, OblAmt) %>%
+                  dplyr::mutate(.resid = .pred - OblAmt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline draws a 45 degree line, along which the results should fall
-BT_pred_act <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = ReqAmt)) +
+BT_pred_act <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = OblAmt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
                         geom_point() +
-                        labs(title = "Bagged Tree Fit: Predicted vs. Actual Requested Funds",
-                              x = "Predicted Requested Funds ($)",
-                              y = "Actual Requested Funds ($)")
+                        labs(title = "Bagged Tree Fit: Predicted vs. Actual Obligated Funds",
+                              x = "Predicted Obligated Funds ($)",
+                              y = "Actual Obligated Funds ($)")
 BT_pred_act
 
 #save file
-BT_pred_act_file = here("results","BT-pred-act.png")
+BT_pred_act_file = here("results","BT-pred-act-obl.png")
 ggsave(filename = BT_pred_act_file, plot = BT_pred_act)
 
 #plot model with residuals
@@ -802,7 +797,7 @@ BT_resids <- ggplot2::ggplot(BT_resid, aes(x = as.numeric(row.names(BT_resid)), 
 BT_resids
 
 #save file
-BT_resid_file = here("results","BT-resid.png")
+BT_resid_file = here("results","BT-resids-obl.png")
 ggsave(filename = BT_resid_file, plot = BT_resids)
 
 #plot model fit vs residuals
@@ -810,13 +805,13 @@ ggsave(filename = BT_resid_file, plot = BT_resids)
 BT_pred_resid <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
                           geom_point() +
-                          labs(title = "Bagged Tree Fit: Residuals vs Fitted Requested Funds",
-                                x = "Predicted Requested Funds ($)",
+                          labs(title = "Bagged Tree Fit: Residuals vs Fitted Obligated Funds",
+                                x = "Predicted Obligated Funds ($)",
                                 y = "Residual")
 BT_pred_resid
 
 #save file
-BT_pred_resid_file = here("results","BT-pred-resid.png")
+BT_pred_resid_file = here("results","BT-pred-resid-obl.png")
 ggsave(filename = BT_pred_resid_file, plot = BT_pred_resid)
 
 #print model performance
@@ -843,7 +838,7 @@ BT_RMSE <- BT_res %>%
 BT_RMSE
 
 #save combined table
-model_comp_file = here("results", "ML-model-comp.Rds")
+model_comp_file = here("results", "ML-model-comp-obl.Rds")
 saveRDS(BT_RMSE, file = model_comp_file)
 ```
 
@@ -856,7 +851,7 @@ Using the bagged tree model
 ```{r}
 #fit model to training set but evaluate on the test data
 BT_fit_test <- best_BT_wflow %>%
-                    tune::last_fit(split = req_data_split)
+                    tune::last_fit(split = obl_data_split)
 
 #compare test performance against training performance
 BT_rmse_test <- collect_metrics(BT_fit_test) %>%
@@ -874,21 +869,21 @@ BT_comp
 #find predictions and intervals
 BT_resid_fit <- BT_fit_test %>%
                   broom.mixed::augment() %>%
-                  dplyr::select(.pred, ReqAmt) %>%
-                  dplyr::mutate(.resid = .pred - ReqAmt)
+                  dplyr::select(.pred, OblAmt) %>%
+                  dplyr::mutate(.resid = .pred - OblAmt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline draws a 45 degree line, along which the results should fall
-BT_pred_act_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = ReqAmt)) +
+BT_pred_act_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = OblAmt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
                         geom_point() +
-                        labs(title = "Bagged Tree Test Fit: Predicted vs. Actual Requested Funds",
-                              x = "Predicted Requested Funds ($)",
-                              y = "Actual Requested Funds ($)")
+                        labs(title = "Bagged Tree Test Fit: Predicted vs. Actual Obligated Funds",
+                              x = "Predicted Obligated Funds ($)",
+                              y = "Actual Obligated Funds ($)")
 BT_pred_act_test
 
 #save file
-BT_pred_act_test_file = here("results","BT-pred-act-test.png")
+BT_pred_act_test_file = here("results","BT-pred-act-test-obl.png")
 ggsave(filename = BT_pred_act_test_file, plot = BT_pred_act_test)
 
 #plot model with residuals
@@ -902,7 +897,7 @@ BT_resids_test <- ggplot2::ggplot(BT_resid_fit, aes(x = as.numeric(row.names(BT_
 BT_resids_test
 
 #save file
-BT_resid_test_file = here("results","BT-resid-test.png")
+BT_resid_test_file = here("results","BT-resid-test-obl.png")
 ggsave(filename = BT_resid_test_file, plot = BT_resids_test)
 
 #plot model fit vs residuals
@@ -910,12 +905,12 @@ ggsave(filename = BT_resid_test_file, plot = BT_resids_test)
 BT_pred_resid_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
                           geom_point() +
-                          labs(title = "Bagged Tree Test Fit: Residuals vs Fitted Requested Funds",
-                                x = "Predicted Requested Funds ($)",
+                          labs(title = "Bagged Tree Test Fit: Residuals vs Fitted Obligated Funds",
+                                x = "Predicted Obligated Funds ($)",
                                 y = "Residual")
 BT_pred_resid_test
 
 #save file
-BT_pred_resid_test_file = here("results","BT-pred-resid-test.png")
+BT_pred_resid_test_file = here("results","BT-pred-resid-test-obl.png")
 ggsave(filename = BT_pred_resid_test_file, plot = BT_pred_resid_test)
 ```
