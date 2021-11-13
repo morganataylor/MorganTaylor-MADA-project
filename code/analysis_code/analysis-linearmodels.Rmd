@@ -161,6 +161,10 @@ req_SLR_bp <- broom.mixed::tidy(req_SLR_fit) %>%
                                    whisker_args = list(color = "blue"),
                                    vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 req_SLR_bp
+
+#save image
+req_SLR_bp_file = here("results","req_SLR_bp.png")
+ggsave(filename = req_SLR_bp_file, plot = req_SLR_bp)
 ```
 
 <br>
@@ -242,6 +246,10 @@ req_MVR_fit_bp2 <- req_MVR_fit_sig %>%
                                            whisker_args = list(color = "blue"),
                                            vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 req_MVR_fit_bp2
+
+#save file
+req_MVR_bp_file = here("results","req_MVR_bp.png")
+ggsave(filename = req_MVR_bp_file, plot = req_MVR_fit_bp2)
 ```
 This model identifies total number of federal agencies, the state/territory being Puerto Rico, and emergency declarations as significant predictors of requested FEMA funding. It makes sense that an emergency declaration is a protective factor, as it is a smaller event than a major disaster declaration.
 
@@ -356,6 +364,10 @@ obl_SLR_bp <- broom.mixed::tidy(obl_SLR_fit) %>%
                                    whisker_args = list(color = "blue"),
                                    vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 obl_SLR_bp
+
+#save image
+obl_SLR_bp_file = here("results","obl_SLR_bp.png")
+ggsave(filename = obl_SLR_bp_file, plot = obl_SLR_bp)
 ```
 
 <br>
@@ -437,6 +449,10 @@ obl_MVR_fit_bp2 <- obl_MVR_fit_sig %>%
                                            whisker_args = list(color = "blue"),
                                            vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 obl_MVR_fit_bp2
+
+#save file
+obl_MVR_bp_file = here("results","obl_MVR_bp.png")
+ggsave(filename = obl_MVR_bp_file, plot = obl_MVR_fit_bp2)
 ```
 This model identifies total number of federal agencies, the state/territory being Puerto Rico, and emergency declarations as significant predictors of obligated FEMA funding. It makes sense that an emergency declaration is a protective factor, as it is a smaller event than a major disaster declaration.
 

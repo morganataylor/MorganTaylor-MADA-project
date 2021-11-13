@@ -2,12 +2,22 @@ This folder contains all of the data (pre- and post-processing and cleaning).
 
 # Data Source
 
-A publicly available dataset identifying sampling locations from across several European countries can be accessed [here](https://www.kaggle.com/brsdincer/chernobyl-chemical-radiation-csv-country-data).
+Three publicly available datasets are used in this analysis:
 
-There are nine variables included: country abbreviation, country numerical code, sampling location (city or state), latitude of sampling location, longitude of sampling location, date of sampling, and concentration of three radioisotopes (Iodine 131, Caesium 134, and Ceasium 137). There are 2051 observations included, but not all observations have complete data.
+* [Disaster Declarations Summaries:](https://www.fema.gov/openfema-data-page/disaster-declarations-summaries-v2)
+* [Mission Assignments:](https://www.fema.gov/openfema-data-page/mission-assignments-v1)
+* [Population:](https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/)
+
+There are also data dictionaries saved in the `raw_data` folder for the declaration summary and mission assignment data.
 
 # Raw Data
-The data listed at the above link are stored as `Chernobyl_Chemical_Radiation.csv` in the `raw_data` folder.
+The data listed at the above link are stored as:
+
+* `DisasterDeclarationsSummaries.csv`
+* `MissionAssignments.csv`
+* `PopulationEstimates.csv`
+
+in the `raw_data` folder.
 
 # Processed Data
-The output of the processing script are stored in the `processed_data`. See `processingscript.R` for details.
+The outputs of the processing scripts are stored in the `processed_data`. See the individual markdown files for more detail.

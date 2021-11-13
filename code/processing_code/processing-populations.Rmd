@@ -10,7 +10,7 @@ output:
 ---
 
 ## Introduction
-This markdown imports the raw data and performs some cleaning as well as feature engineering. The raw data comes from  [the U.S> Department of Agriculture Economic Research Service](https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/).
+This markdown imports the raw data and performs some cleaning as well as feature engineering. The raw data comes from  [the U.S. Department of Agriculture Economic Research Service](https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/).
 
 <br>
 

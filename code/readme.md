@@ -2,30 +2,79 @@ This folder stores all of the scripts that process and analyze the data.
 
 # Processing
 
-The `processing_code` folder contains one script: `processingscript.R` which does the following:
-* loads the raw data
-* cleans the labels and formatting of the data
-* conducts some feature engineering to create distance from Chernobyl and country name
-* addresses missing data
-* converts the data from wide format into long format for the radioisotopes measured
-* creates a subset of the unique sampling locations
+The `processing_code` folder contains four markdowns:
+
+## Mission Assignments: `processing-missions.Rmd`
+This markdown loads the raw mission assignments data and does the following:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Summarization of mission costs for each state and disaster declaration
+* Feature engineering to create cost share proportions
+* Saving the processed dataset as an .rds
+
+## Populations: `processing-populations.Rmd`
+This markdown loads the raw population data and does the following:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Feature engineering to determine number of counties per state
+* Saving the processed dataset as an .rds
+
+## Disaster Declarations: `processing-declarations.Rmd`
+This markdown loads the raw declaration data and does the following:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Feature engineering to create duration of incident and response
+* Summarization of key variables for each disaster declaration and state
+* Saving the processed dataset as an .rds
+
+## Combine: `processing-combine.Rmd`
+The markdown loads the previously processed data and combines it into one dataframe.
+
 
 # Analysis
 
-The `analysis_code` folder contains three scripts:
+The `analysis_code` folder contains four markdowns:
 
-## Exploratory data analysis: `edascript.R`
-This script conducts an  exploratory data analysis of the procesed data and saves the outputs in the `results` folder. In particular, it examines
-* primary outcome(s) of interest: radisotope concentration (I-131, Cs-134, Cs-137)
-* primary predictor of interest: days since Chernobyl meltdown
-* other relevant variables including country, distance from Chernobyl in km, and sampling location
+## Exploratory Data Analysis: `analysis-eda.Rmd`
+This markdown loads the processed data and does the following for each variable:
 
-## Half-life decomposition analysis: `halflifescript.R`
-This script utilizes the `radsafer` package to calculate the predicted half-life decomposition for each radioisotope in question. 
+1. Produce and print some numerical output (e.g. table, summary statistics)
+2. Create a histogram or density plot (continuous variables only)
+3. Scatterplot, boxplot, or other similar plots against the main outcome of interest
+4. Any other exploration steps that may be useful.
 
-As of 10/29/2021, the next step in the analysis is to examine the predicted concentrations in relation to the measured concentrations.
+## Linear Models: `analysis-lienramodels.Rmd`
+This analysis examines the predictors of allocation of FEMA funds during disaster declarations. The following definitions exist for the analysis:
 
-## Mapping analysis: `mapscript.R`
-This script plots the sample locations on a map in relation to the Chernobyl plant. 
+* The two outcomes of interest are Requested Amount (`ReqAmt`) and Obligated Amount (`OblAmt`).
+* The primary predictor of interest is Incident Duration (`IncidentDuration`)
+* Whichever outcome is not currently fitted to the model will *not* be considered a predictor of interest
 
-As of 10/29/2021: Pending approval from Google API, this script will also plot the concentrations of the radioisotopes in a gradient fashion on a Google Maps underlay.
+For each outcome of interest, the following steps will be completed:
+
+1. Fit a simple linear regression with the primary predictor of interest
+2. Fit a multivariable linear regression
+3. Comparison of the two models
+
+## Machine Learning for Requested Funds: `analysis-ML-RA.Rmd`
+This script uses requested FEMA funds as the outcome of interest and fits the following models to the analysis data:
+
+* Null
+* Decision Tree
+* Random Forest
+* Bagged Tree
+
+It compares the  models, and then finally fits the “best” model to the test data.
+
+## Machine Learning for Obligated Funds: `analysis-ML-OA.Rmd`
+This script uses obligated FEMA funds as the outcome of interest and fits the following models to the analysis data:
+
+* Null
+* Decision Tree
+* Random Forest
+* Bagged Tree
+
+It compares the  models, and then finally fits the “best” model to the test data.
