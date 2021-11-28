@@ -91,10 +91,11 @@ We only want to keep the following variables:
 ```{r variable selection}
 #select key variables
 pops_1 <- populations_raw %>%
-                dplyr::select(FIPStxt,
+                dplyr::select(ï..FIPStxt,
                               State,
                               Area.name,
-                              Population.2020)
+                              Population.2020) %>%
+               dplyr::rename(FIPStxt = ï..FIPStxt)
 ```
 We will eventually get rid of FIPStxt, but we need it to separate state and county level data.
 
