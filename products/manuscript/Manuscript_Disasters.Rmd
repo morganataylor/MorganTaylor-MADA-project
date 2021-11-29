@@ -49,7 +49,7 @@ The standard metric for evaluating regression models is the root mean square err
 $$
 RMSE = \sqrt{\frac {1}{n} \sum_{i = 1}^{n}{(S_i - O_i)^2}}
 $$
-where O_i are the observations, S_i are the predicted values of the outcome, and n is the number of observations in the analysis. RMSE is scale dependent, but the lower the RMSE, the better the model performance.
+where O<sub>i</sub> are the observations, S<sub>i</sub> are the predicted values of the outcome, and n is the number of observations in the analysis. RMSE is scale dependent, but the lower the RMSE, the better the model performance.
 
 ## Software
 This analysis was conducted in Rstudio 4.1 on a Windows Server operating system [@r_core_team_r_2021]. The following R packages were utilized: here, tidyverse, skimr, lubridate, tidymodels, broom.mixed, rpart.plot, vip, glmnet, doParallel, ranger, and baguette. All processing and analysis code can be found in the supplementary materials.
@@ -79,7 +79,7 @@ knitr::include_graphics("../../results/BT-IV-outlier.png")
 knitr::include_graphics("../../results/BT-IV-obl-outlier.png")
 ```
 
-The RMSEs for the testing and training datasets were substantially different, with an RMSE of 45003235 for the training data and 69378994 for the testing data. Figure \@ref(fig:BT-pred-act-test) shows the predicted and actual requested funds values, and Figure \@ref(fig:BT-pred-act-test-obl) does the same for obligated FEMA funds. The supplementary information contains the code for the models as well as all diagnostic plots.
+The RMSEs for the testing and training datasets were substantially different, with an RMSE of 45003235 for the training data and 69378994 for the testing data. Figure \@ref(fig:BT_pred_act_test) shows the predicted and actual requested funds values, and Figure \@ref(fig:BT_pred_act_test-obl) does the same for obligated FEMA funds. The supplementary information contains the code for the models as well as all diagnostic plots.
 ```{r BT_pred_act_test,  fig.cap='Predicted vs actual requested FEMA funds for the bagged tree fit', echo=FALSE}
 knitr::include_graphics("../../results/BT-pred-act-test.png")
 ```
