@@ -78,3 +78,6 @@ This script uses obligated FEMA funds as the outcome of interest and fits the fo
 * Bagged Tree
 
 It compares the  models, and then finally fits the “best” model to the test data.
+
+## Outlier Analysis: `...-outlier.Rmd`
+These scripts repeat the previously described machine learning analyses, but it removes the $4B outlier that corresponds to the 2017 Hurricane Maria in Puerto Rico. This disaster was more than \$2B than the next largest allocation of FEMA funds and has been repeatedly identified as extenuating circumstances.

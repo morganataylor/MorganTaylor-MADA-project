@@ -780,11 +780,16 @@ bag_roots <-  function(x){
 }
 
 #plot most important variables
-bag_roots(BT_res) %>% 
-  ggplot(mapping = aes(x = fct_rev(fct_infreq(root)))) + 
-  geom_bar() + 
-  coord_flip() + 
-  labs(x = "root", y = "count")
+BT_IV <- bag_roots(BT_res) %>% 
+            ggplot(mapping = aes(x = fct_rev(fct_infreq(root)))) + 
+            geom_bar() + 
+            coord_flip() + 
+            labs(x = "root", y = "count")
+BT_IV
+
+#save file
+BT_IV_file = here("results","BT-IV-obl-outlier.png")
+ggsave(filename = BT_IV_file, plot = BT_IV)
 
 #find predictions and intervals
 BT_resid <- best_BT_fit %>%

@@ -1,5 +1,5 @@
 ---
-title: "Analysis: Machine Learning - ReqAmt"
+title: "Analysis: Machine Learning - ReqAmt - Outliers"
 output: 
   html_document:
     theme: flatly
@@ -17,7 +17,7 @@ This script uses requested FEMA funds as the outcome of interest and fits the fo
 * Random Forest
 * Bagged Tree
 
-It compares the  models, and then finally fits the “best” model to the test data.
+It compares the  models, and then finally fits the “best” model to the test data. It removes the $4B outlier that corresponds to Hurricane Maria in Puerto Rico in 2017.
 
 <br>
 
@@ -295,7 +295,7 @@ tree_mod <-
   parsnip::set_engine("rpart") %>%
   parsnip::set_mode("regression")
 
-#use the recipe specified earlier (line 133)
+#use the recipe specified earlier
 ```
 ---
 
@@ -780,12 +780,16 @@ bag_roots <-  function(x){
     dplyr::select(root)  
 }
 
-#plot most important variables
-bag_roots(BT_res) %>% 
-  ggplot(mapping = aes(x = fct_rev(fct_infreq(root)))) + 
-  geom_bar() + 
-  coord_flip() + 
-  labs(x = "root", y = "count")
+BT_IV <- bag_roots(BT_res) %>% 
+            ggplot(mapping = aes(x = fct_rev(fct_infreq(root)))) + 
+            geom_bar() + 
+            coord_flip() + 
+            labs(x = "root", y = "count")
+BT_IV
+
+#save file
+BT_IV_file = here("results","BT-IV-outlier.png")
+ggsave(filename = BT_IV_file, plot = BT_IV)
 
 #find predictions and intervals
 BT_resid <- best_BT_fit %>%
