@@ -1,0 +1,204 @@
+---
+title: Project Review Template 
+date: "`r file.mtime(knitr::current_input())`"
+#bibliography: ../media/references.bib
+output: 
+  html_document:
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r}
+require(emoji)
+```
+
+
+# Overview
+
+Title of project: Predicting Federal Emergency Management Agency Funding for U.S. Disasters
+
+Name of project author(s): Morgan Taylor
+
+Name of project reviewer: Zane Billings
+
+# Specific project content evaluation
+
+## Background, Context and Motivation
+
+### Feedback and Comments
+
+* The paper includes a fairly comprehensive background of the disaster response process and how FEMA money is requested and allocated. The motivation for the project is clear.
+* The only previous context for the research question is that "little has been done to draw conclusions from these data for predicting the financial impacts of disasters". I think it would benefit the paper to include a section on previous work for modeling disease costs, or mentioning any studies that have previously used this data in a similar way.
+* The new information the project hopes to provide is explained well.
+* Other than the lack of previous research context, I think the introduction is comprehensive. If there are truly no studies in this area, that should be noted as well.
+* The section on machine learning models should be moved to the Methods section.
+
+### Summary assessment
+
+Some contextualization and motivation.
+
+## Question description
+
+### Feedback and Comments
+
+* The question is explained well. What I understood as the research question is:
+
+> Can the amount of allocated or requested FEMA funding be predicted for a given disaster?
+
+If this is not the intended research question, I advise revision of the introduction section.
+
+* For me, the introduction would flow better if the paragraph beginning "It would greatly benefit the federal government to be able to predict..." was at the end of the introduction as this paragraph contains the statement of the research question.
+* I think the research question is clear, but I think it could be made by more detailed by saying something to the effect of "We aim to predict allocated/predicted FEMA funds using...[list of predictors]." Not every predictor needs to be listed but I think this would be nice (overlaps somewhat with a point I make in the next section).
+
+### Summary assessment
+Question/hypotheses fully clear.
+
+
+## Data description
+
+### Feedback and Comments
+
+* The data source is explicitly listed.
+* The data are described well but I would prefer an explicit list of candidate predictors used for the models.
+* I wasn't aware that codebooks were a requirement for the project, but codebooks are provided for two of the three raw data sheets, and links to the data sources are provided in the README.
+
+### Summary assessment
+Source and overall structure of data well explained.
+
+
+## Data wrangling and exploratory analysis
+
+### Feedback and Comments
+
+* Coverage of data wrangling is sparse, but what I would expect from a typical manuscript.
+* Meaningful exploratory results are shown in the supplement.
+  + I think a table stratifying by state is unnecessary. The information would be easier to see as a map.
+  + Table numbers in the supplement aren't working correctly. (I.e. some crossrefs show up as "Table ??".)
+  + Packages should be cited as references. I think citing RStudio is important but it's much more important to cite the R language--the analysis can be repeated without RStudio, but not without R. The supplement text says "RStudio 4.1" but RStudio is only on 1.4 (as opposed to R 4.1.x) so I think this is what is meant.
+  + I don't understand how a state can request a negative amount of money. This should be explained in the text.
+  + I think funds should probably always be plotted on a log scale. Plotting on a normal scale seems likely to distort the results. Maybe I'll discuss more in the modeling section.
+  + If number of disasters per month and per year are in the data, I'd also like to see a time series plot of the number of disasters.
+  + Table 1.3 runs off the edge of the page.
+  + Supplement says "Further analysis of all variables can be found in the supplementary information." Well, that's where I am, so where is it? Haha just kind of funny `r emoji::emoji("grin")`
+  + Glad you discussed the number of observations at 660 days incident duration. Maybe comment on if these were left in during analysis or not, as these observations will likely have overdue leverage in a regression model.
+  + After the incident duration plots, "RStudio 4.1" is referenced again. This is a personal pet peeve, but I really recommend fixing this. The models weren't fit using RStudio, they were fit using R. RStudio is just a graphical interface, it does none of the heavy lifting.
+  + Figure references are messy in the same paragraph, it looks like you forgot backslashes.
+  + Anyways, nice consistent use of color, I really like the red and blue to distinguish between the two outcomes. However, I'd maybe consider switching to a perceptually uniform palette--one of the colors should be lighter than the other so they are still distinguishable if the document is printed in grayscale. The `scico` and `viridis` packages offer good examples.
+  + Please show coefficients for all regression coefficients instead of just significant coefficients. Yes they will be clustered around zero, but I'd still like to see confidence intervals. I'd also recommend using the same color scheme as with the bar plots here.
+  + I'd like to see histograms of the outcomes in the supplement (or density plot, but I like histograms more). If they are heavily skewed, this can affect your interpretation of the linear model. My suspicion is that modeling the log outcome would be more appropriate in this case, but it's hard to tell without seeing the data. Of course there are negative numbers in the range which can't be logged, but like I commented earlier I don't really understand why there are negative money amounts.
+* You could discuss the overall cleaning/wrangling process in the manuscript a bit more if you wanted to, but I think what you have is pretty typical, usually we spend 90% of our time cleaning data only to not mention that at all in the paper :)
+* For example, I think you could explain more what you mean by "feature engineering was performed to...", this phrase doesn't mean anything to me.\
+* The only real "weaknesses" I see here are what I described about the beginning of the supplement, there are a few more things I think you need to justify a bit better like I mentioned before.
+
+### Summary assessment
+Some weaknesses in wrangling and exploratory component.
+
+## Appropriateness of Analysis
+Were the analysis methods appropriate for the data? Was the analysis done properly? Were different components of the analysis (e.g. performance measure, variable selection, data pre-processing, model evaluation) done in the best way possible and explained well?
+
+### Feedback and Comments
+
+* I think the results of the multivariate regression should be reported in the main text along with the RMSE for the model.
+* I don't think you need to include the definition of the RMSE in the main text.
+* If your data are spatially stratified, I think you could consider using either spatial resampling (e.g. https://spatialsample.tidymodels.org/reference/spatial_clustering_cv.html) or justifying why you use normal cross-validation. For spatially-clustered data, points in the same cluster tend to be more similar than points in different clusters, and reporting metrics on cross-validation folds which don't take clusters into account can be overly optimistic.
+* Including all the states as individual predictors in the linear model is a valid approach but maybe not the most efficient approach. E.g. you could get the centroid latitude/longitude for each state and include those as predictors instead. Nothing wrong with this and I don't know that much about spatial data, you just have a lot of predictors which can often be annoying.
+* If time permits, I would recommend consideration of a few other modeling methods. I think regression with the elastic net should be included--this tends to be a logical "next step" from multiple linear regression, and is typically quite fast to fit. The model is also easy to interpret, and usually I think if an elastic net model fits "about as well" as a tree-based model, the elastic net model should be preferred. 
+* KNN might also be a nice model to try. Sometimes it performs really well despite being so simple if the data have local structure. It's also easy and fast to tune most of the time.
+* More complicated additions might be a gradient boosted tree or ensemble model. But I think the dataset is too small to reliably prevent overfitting by a boosted tree, and we didn't discuss ensembles much in class. Maybe a cubist model would be nice too but also not discovered in class and the tidymodels implementation is currently a bit sketchy.
+* Are your reported metrics from fitting the best model on the entire training data set, or from the cross-validated predictions? Since they have SEs, I assume from cross-validation but you should clarify this in the table captions. I also think the raw RMSEs are quite hard to interpret and I really recommend showing the log RMSE instead of the raw RMSE. log is a monotonic function so this won't mess up your results or cause you to pick a different model, it just makes the numbers easier to compare.
+* I think your analysis would really benefit from including an abbreviated Table 1 or at least a list of the predictors that were included in the models.
+* How was variable importance calculated? It's weird to me that you have "count" on the x-axis for the VI plot, usually VI is in a pretty arbitrary metric. Also not sure what the "root" label on this plot means. Using the same color stratification for the two outcomes as you did in the supplement would be nice.
+* Your discussion suggests to me that potentially requested/obligated funds per capita may be better to predict than the raw numbers.
+* Can you provide the correlation between the request/obligated funds? From the prediction plots they appear to be highly correlated. It's still ok to model them independently, it just indicates that you could be losing information by modeling them separately. 
+* Can you comment on the outliers in the diagnostic plots? It appears that your best model has a difficult time predicting extremely high values. I'd also like to see the residual vs predicted plots.
+* Overall I think your analysis is nice, but could definitely be improved with a few additional explanations and maybe transforming the response variables. The only thing I think would be difficult to defend would be not using spatial resampling but I know that we didn't talk about this in class so `r emoji::emoji("man_shrugging")`
+
+### Summary assessment
+Strong and reasonable analysis.
+
+## Presentation
+
+### Feedback and Comments
+
+* I don't like the ggplot2 default theme very much, the gray lines make the plots difficult to read IMO. If you like them that's fine but I think you should consider using a theme with less non-data ink.
+* Plot text needs to be larger, it's quite difficult to read.
+* I think you could really benefit from using color (preferably a perceptually uniform palette) to distinguish between the two outcomes.
+* Also, I think the plots/table I mentioned earlier would be nice additions.
+* I think if you have spatial data you can't go wrong with including at least one map if you have a place for it, it usually tends to impress readers (and editors). But if you don't have a place for it that's ok too, just thought I'd say this!
+* Inclusion of the reference lines on the predicted vs observed plots is nice.
+* Sorting by VI on the VIPs is nice, they are quite easy to interpret.
+* Finally, a table of RMSEs on the test data should be included so you can discuss any potential over or underfitting.
+* Overall I think your plots are good and effectively communicate what you want them to, but there's a bit of room for polishing.
+
+### Summary assessment
+Results are presented ok, with room for improvement.
+
+## Discussion/Conclusions
+
+### Feedback and Comments
+
+* I agree with your assessment of variable importances
+* More discussion of outliers in prediction and test data results would be good. Do you suspect overfitting? Underfitting?
+* I agree with your second paragraph in the discussion completely. That data would be good but I understand why it's not feasible. Great explanation of a limitation that you are working around as best you can.
+* I just read this section and now see why you report a negative cost, sorry I didn't catch this earlier. I think this should also be explained earlier or in the supplement. I also think that you would be justified in only modeling the positive outcomes, or using a model with two stages (similar to a hurdle/zero-inflated model) where you first predict whether a data point should be negative or positive based on the covariates and then predict the outcome. Your point about two separate models is also valid.
+* I think your conclusion is fairly strong, but I think there is a bit of results that you are missing. Checking the VIP and metrics on the test data would be good, as would be a comparison of diagnostic plots on the test vs train data.
+
+### Summary assessment
+Minor parts wrong, missing or unclear.
+
+# Overall project content evaluation
+Evaluate overall features of the project by filling in the sections below.
+
+## Structure
+
+### Feedback and Comments
+
+* Best not to index temporary Office files with Git, e.g. `~$nuscript_Disasters.docx`. These are indexed for Git tracking when you commit all staged changes to Git while you have an unsaved Office document open. Assuming that you don't use `$` in file names, you can add `*$*` to the `.gitignore` (or to be safer, `*$*.docx`).
+* Project structure is fine, based of the template so nothing to really say about it.
+* Archive is a bit messy, maybe stuff from previous project ideas should be kept in a different repo instead of in here.
+
+### Summary assessment
+Mostly clear, but some confusing parts (confusing files--useless is a bit too strong of a word for this).
+
+## Documentation 
+
+### Feedback and Comments
+
+* READMEs are good. Understood which scripts to run in what order.
+* No (runtime) errors in processing scripts, code is well-documented and easy to understand.
+* No (runtime) errors in analysis scripts, code is well-documented and easy to understand.
+* No (runtime) errors in manuscript or supplement.
+* Didn't check for semantic errors in code but results reported in manuscript seem to make sense.
+
+### Summary assessment
+Fully and well documented.
+
+## Reproducibility
+Are all results fully reproducible? Is documentation provided which clearly explains how to reproduce things, and does it work without the need for any manual intervention? Are you able to re-run the whole analysis without having to do manual interventions/edits?
+
+### Feedback and Comments
+
+Yes, see above section.
+
+### Summary assessment
+Fully reproducible without issues.
+`analysis-ML-RA` generated 50+ warnings, but they all appear to be due to the parallel processor so they aren't actual issues.
+
+
+## Thoroughness
+
+### Feedback and Comments
+
+Study appeared to be fairly thorough although alternatives like only modeling positive values (with/without log transform), per capita, or modeling both outcomes simultaneously could be considered. The latter is outside the scope of the class but e.g. the difference between the two outcomes could be modeled. Consideration of outliers could be more robust but I think it is fine as is because I rarely think outlier analysis is worthwhile.
+
+### Summary assessment
+Decent level of thoroughness.
+
+
+## Further comments
+
+* If you want, you can format an abstract in your document using YAML by adding the lines
+    `abstract: |`
+    `text of abstract goes down here`
+
+
