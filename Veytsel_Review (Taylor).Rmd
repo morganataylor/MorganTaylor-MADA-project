@@ -1,0 +1,85 @@
+---
+title: Project Review Template 
+date: "`r file.mtime(knitr::current_input())`"
+#bibliography: ../media/references.bib
+output: 
+  html_document:
+    toc_depth: 3
+    number_sections: true
+---
+
+#Overview
+Title of project: Predicting Federal Emergency Management Agency Funding for U.S. Disasters
+
+Name of project author(s): Morgan Taylor
+
+Name of project reviewer: Gabriella Veytsel
+
+# Specific project content evaluation
+**Background, Context and Motivation**
+A few small comments. I think you should cite your first sentence of the summary/abstract; in fact, it would be pertinent to include some statistics from the literature. You spend a lot of text discussing the process of disaster assistance and one sentence on the gap in knowledge, but I think there should be a little bit more justification/signficance of your study. For example, when you say that this information is important to states and the federal govt., I think you could be more explicit about how exactly this knowledge would benefit states. It might also be benficial to have a brief background on disasters themselves: how often the occur, categories, the costs involved, etc. Ultimately, strong contexualization, but I would recommend hitting more on what has been done already, the need, and how this research addresses it.
+
+**Summary assessment**
+* strong contextualization and motivation
+
+**Question description**
+Clear and straightforward question.
+
+**Summary assessment**
+* question/hypotheses fully clear
+
+**Data description**
+I think the data was well described. A data dictionary in the supplemental section would probably be useful, but I'm not sure how common that really is. You described the leaning, feature engineering done for each dataset, and merging into final datset for analysis.
+
+**Summary assessment**
+* source and overall structure of data well explained
+
+**Data wrangling and exploratory analysis**
+Well explained and extremely through exploratory analysis. Generated a ton of figures, but results maybe could have been more described in the code, as well as reasoning behind each one. 
+
+**Summary assessment**
+* essentially no weaknesses in wrangling and exploratory component
+
+**Appropriateness of Analysis**
+I was wondering, for the bagged tree model, is it possible for the RMSE to be in the millions? That seems kind of strange, maybe. Does it make sense to remove Hurricane Maria from the analysis? Overall, really strong analysis and data exploration, just so thorough and well done. She used many models and each one had a detailed investigation into performance metrics and diagnostic plots.
+
+**Summary assessment**
+* strong and reasonable analysis
+
+**Presentation**
+Might want to change your y-axis label for figures 4.1 and 4.2. Your model comparison tables look good to me. You should change the @ref you're getting below your figures. Your supplemental section also looks great and thorough.
+
+**Summary assessment**
+* results are very well presented
+
+**Discussion/Conclusions**
+Regarding your statement about state population: I feel like the state population is a different variable than the number of people directly/indirectly affected. Strengths and limitations were really well done.
+
+**Summary assessment**
+* strong, complete and clear discussion
+
+#Overall project content evaluation
+
+**Structure**
+Your readme files are really nice and thorough, explaining the organization of everything in your folder and a summary of the steps and data.
+
+**Summary assessment**
+* well structured
+
+**Documentation**
+The scripts are clean and well organized, which is super important as I'm trying to follow along with your steps, reasoning, and interpretation. I think there still is some room to comment on your decision-making throughout the code. 
+
+**Summary assessment**
+* fully and well documented
+
+**Reproducibility**
+Yes, everything ran without issues! I think there should be explicit instructions though for executing the code.
+
+**Summary assessment**
+* fully reproducible without issues
+
+**Thoroughness**
+This was excellent! REALLY well done. It is really clear that you put in an incredible amount of work into everything and had really great understanding of your data and the methods. Your organization was so well documented. SO thorough and thoughtful, used many models that we discussed in class. Honestly, this seemed publication quality to me, like you didn't take any shortcuts--everything is so neat. I can only imagine how long it took you to do this! 
+
+**Summary assessment**
+* strong level of thorougness
