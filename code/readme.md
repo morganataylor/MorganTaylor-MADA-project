@@ -1,11 +1,11 @@
-# Overview
+# Code Folder Overview
 
-This folder stores all of the scripts that process and analyze the data. There are two sub-folders: `processing_code` and `analysis_code`, and the contents of each are described below.
+This folder stores all of the scripts that process and analyze the data. There are two sub-folders: `processing_code` and `analysis_code`, the contents of each are described below.
 
 
 # Processing
 
-The `processing_code` folder contains four markdowns that should be run in the following order:
+The `processing_code` folder contains five markdowns that should be run in the following order:
 
 ### 1. Mission Assignments: `processing-missions.Rmd`
 This markdown loads the raw mission assignments data and does the following:
@@ -34,7 +34,15 @@ This markdown loads the raw declaration data and does the following:
 * Saving the processed dataset as an .rds
 
 ### 4. Combine: `processing-combine.Rmd`
-The markdown loads the previously processed data and combines it into one dataframe.
+This markdown loads the previously processed data and combines them into one dataframe.
+
+### 5. Machine Learning Processing: `processing-ML.Rmd`
+This markdown loads the singular dataframe and does the following steps for the ML analysis:
+
+* Adjustment of variable class
+* Recategorization of FEMA region and incident type
+* Removal of irrelevant variables
+* Creates subsets for each analysis
 
 
 # Analysis
