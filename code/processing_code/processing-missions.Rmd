@@ -50,7 +50,7 @@ library(skimr) #for data summarization
 ---
 
 ## Load Raw Data
-Load the raw data downloaded from provided hyerlink.
+Load the raw data downloaded from provided hyperlink.
 ```{r load data}
 #path to data
 #note the use of the here() package and not absolute paths
