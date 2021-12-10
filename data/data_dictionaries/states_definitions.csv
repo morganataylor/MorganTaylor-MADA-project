@@ -1,0 +1,5 @@
+Variable,Type,Description
+state,string,Abbreviation for state or territory
+latitude,number,Decimal latitude for the state or territory
+longitude,number,Decimal longitude for the state or territory
+name,string,Name of state or territory

@@ -10,6 +10,7 @@ Three publicly available datasets are used in this analysis:
 * [Disaster Declarations Summaries:](https://www.fema.gov/openfema-data-page/disaster-declarations-summaries-v2)
 * [Mission Assignments:](https://www.fema.gov/openfema-data-page/mission-assignments-v1)
 * [Population:](https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/)
+* [Coordinates:](https://developers.google.com/public-data/docs/canonical/states_csv)
 
 
 # Raw Data
@@ -19,6 +20,7 @@ The `raw_data` folder contains the data listed at the above links as:
 * `DisasterDeclarationsSummaries.csv`
 * `MissionAssignments.csv`
 * `PopulationEstimates.csv`
+* `states.csv`
 
 
 # Processed Data
@@ -39,4 +41,4 @@ See `/code/readme.md` as well as the source markdowns for more detail about how 
   
 # Data Dictionaries
 
-A data dictionary for each dataset (both raw and processed) is located in the `data_dictionaries` folder.
+A data dictionary for each raw dataset is located in the `data_dictionaries` folder.

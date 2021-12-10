@@ -1,0 +1,9 @@
+Variable,Type,Description
+FIPStxt,character,Numeric code unique to states and counties
+State,character,Abbreviation of state or territory name
+Area name,character,"Label for population estimates (e.g. county name, overall state, or country)"
+Rural-urban continuum code 2013,double,Classifies metropolitan counties by population size of metro area and nonmetropolitan counties by degree of urbanization and adjacency to a metro area
+Population 1990,double,US Census population estimate for 1990
+Population 2000,double,US Census population estimate for 2000
+Population 2010,double,US Census population estimate for 2010
+Population 2020,double,US Census population estimate for 2020

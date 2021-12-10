@@ -7,16 +7,7 @@ This folder stores all of the scripts that process and analyze the data. There a
 
 The `processing_code` folder contains five markdowns that should be run in the following order:
 
-### 1. Mission Assignments: `processing-missions.Rmd`
-This markdown loads the raw mission assignments data and does the following:
-
-* Raw data summarization and overview
-* Removal of irrelevant variables
-* Summarization of mission costs for each state and disaster declaration
-* Feature engineering to create cost share proportions
-* Saving the processed dataset as an .rds
-
-### 2. Populations: `processing-populations.Rmd`
+### 1. Populations: `processing-populations.Rmd`
 This markdown loads the raw population data and does the following:
 
 * Raw data summarization and overview
@@ -24,25 +15,41 @@ This markdown loads the raw population data and does the following:
 * Feature engineering to determine number of counties per state
 * Saving the processed dataset as an .rds
 
+### 2. Mission Assignments: `processing-missions.Rmd`
+This markdown loads the raw mission assignments data and does the following:
+
+* Raw data summarization and overview
+* Removal of irrelevant variables
+* Summarization of mission costs for each state and disaster declaration
+* Feature engineering to create cost share proportions and number of government agencies involved in the response
+* Cleaning the state variable names to match the other data sources
+* Saving the processed dataset as an .rds
+
 ### 3. Disaster Declarations: `processing-declarations.Rmd`
 This markdown loads the raw declaration data and does the following:
 
 * Raw data summarization and overview
 * Removal of irrelevant variables
-* Feature engineering to create duration of incident and response
+* Feature engineering to create duration of incident and response as well as month and year of event
 * Summarization of key variables for each disaster declaration and state
 * Saving the processed dataset as an .rds
 
 ### 4. Combine: `processing-combine.Rmd`
 This markdown loads the previously processed data and combines them into one dataframe.
 
-### 5. Machine Learning Processing: `processing-ML.Rmd`
-This markdown loads the singular dataframe and does the following steps for the ML analysis:
+### 5. Further Processing: `processing-ML.Rmd`
+This markdown loads the singular dataframe and does the following additional cleaning/processing steps:
 
-* Adjustment of variable class
-* Recategorization of FEMA region and incident type
-* Removal of irrelevant variables
-* Creates subsets for each analysis
+* Adding coordinates and FEMA Region for each state and territory
+* Subsetting the outcome
+* Cleaning variables (e.g. "other" categorization and ordinal transformation of incident month)
+* Labeling variables
+
+It creates the following dataframes used for analysis:
+
+* `analysisdata.rds` : used for exploratory data analysis
+* `analysisdata-RA.rds`: used for modeling request amount as the outcome
+* `analysisdata-OA.rds`: used for modeling obligated amount as the outcome
 
 
 # Analysis

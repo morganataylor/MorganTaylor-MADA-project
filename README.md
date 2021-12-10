@@ -52,4 +52,5 @@ This analysis requires R, Rmarkdown (and variants, e.g. bookdown), Github and a 
 * [Disaster Declarations Summaries:](https://www.fema.gov/openfema-data-page/disaster-declarations-summaries-v2)
 * [Mission Assignments:](https://www.fema.gov/openfema-data-page/mission-assignments-v1)
 * [Population:](https://www.ers.usda.gov/data-products/county-level-data-sets/download-data/)
+* [Coordinates:](https://developers.google.com/public-data/docs/canonical/states_csv)
 

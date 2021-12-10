@@ -1311,24 +1311,6 @@ EDAdata$HM <- factor(EDAdata$HM,
                      levels = c(0, 1),
                      labels = c("Not Awarded", "Awarded"))
 
-#specify table labels
-table1::label(EDAdata$state) <- "State"
-table1::label(EDAdata$IncidentYear) <- "Incident Year"
-table1::label(EDAdata$IncidentMonth) <- "Declaration Month"
-table1::label(EDAdata$declarationType) <- "Declaration Type"
-table1::label(EDAdata$incidentType) <- "Incident Type"
-table1::label(EDAdata$IncidentDuration) <- "Incident Duration"
-table1::label(EDAdata$ResponseDays) <- "Response Duration"
-table1::label(EDAdata$Population) <- "State Population"
-table1::label(EDAdata$Counties) <- "Counties per State"
-table1::label(EDAdata$TotalAgencies) <- "Federal Agencies Involved"
-table1::label(EDAdata$FEMACSAvg) <- "Average FEMA Cost Share"
-table1::label(EDAdata$IH) <- "Individuals/Households Program"
-table1::label(EDAdata$PA) <- "Public Assistance Program"
-table1::label(EDAdata$HM) <- "Hazard Mitigation Program"
-table1::label(EDAdata$ReqAmt) <- "Requested FEMA Funds"
-table1::label(EDAdata$OblAmt) <- "Obligated FEMA Funds"
-
 #specify units
 table1::units(EDAdata$IncidentDuration) <- "days"
 table1::units(EDAdata$ResponseDays) <- "days"

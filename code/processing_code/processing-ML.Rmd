@@ -1,0 +1,326 @@
+---
+title: "Data Processing: Creating the Analysis Dataframe"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+<br>
+
+---
+
+## Introduction
+This markdown imports the processed, combined dataframe, and conducts the following data cleaning / wrangling steps:
+
+* Adding coordinates and FEMA Region for each state and territory
+* Subsetting the outcome
+* Cleaning variables (e.g. "other" categorization and ordinal transformation of incident month)
+* Labeling variables
+
+
+It also creates the following dataframes for analysis:
+
+* `analysisdata.rds` : used for exploratory data analysis
+* `analysisdata-RA.rds`: used for modeling request amount as the outcome
+* `analysisdata-OA.rds`: used for modeling obligated amount as the outcome
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for data loading/saving
+* tidyverse: for data management
+* table1: for labeling variables
+
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #for data loading/saving
+library(tidyverse) #for data management
+library(table1) #for labeling the variables
+```
+
+---
+
+## Load Data
+Load the analysis data from the `processed_data` folder in the project file.
+```{r load data}
+#path to data
+#note the use of the here() package and not absolute paths
+data_location <- here::here("data","processed_data","analysisdata.rds")
+
+#load data. 
+analysisdata <- readRDS(data_location)
+
+#summary of data using skimr package
+skimr::skim(analysisdata)
+```
+
+---
+
+## Further Data Cleaning / Processing
+As I worked through the analysis, I realized there were additional needs for the data cleaning/processing step. As they all were based on the combined dataset, I decided to add them here instead of continuously repeating it in each analysis script.
+
+---
+
+### Geographic Data
+For the exploratory analysis as well as for spatial cross-validation, we need some sort of geographic data for each state. Google Developers have a dataset that represents the latitude and longitude for each state as well as DC and PR that can be found [here](https://developers.google.com/public-data/docs/canonical/states_csv). It is also saved in the `raw_data` folder along with a data dictionary.
+
+First import the data.
+```{r load states}
+#load states data
+data_location_states <- here::here("data", "raw_data", "states.csv")
+
+#load data
+states_raw <- utils::read.csv(data_location_states, na.strings = c("", "NA"))
+
+#summary of data using skimr package
+skimr::skim(states_raw)
+```
+
+Now we can do an inner join based on the state abbreviation.
+```{r state join}
+analysisdata_1 <- dplyr::left_join(analysisdata, states_raw, by = "state")
+```
+
+We now have geographic data for each state. This step also added a full length version of state name, but we will wait until the end of this script to remove any unnecessary variables.
+
+---
+
+### Subsetting Outcome
+In earlier versions of the analysis, requested and obligated amounts were both positive and negative. Conceptually, the negative amounts correspond to circumstances when the states owe FEMA money (e.g. states requested federal assistance but do not meet the damage threshold for federal relief), while positive amounts correspond to circumstances where FEMA is providing relief to the states.
+
+The initial exploratory data analysis iteration suggested the data would be better modeled if log transformed, so I'm deciding to subset the outcomes by focusing only on circumstances where FEMA provides funding (e.g. only values greater than zero of `ReqAmt` and `OblAmt`). This will also ease the conceptual interpretation in the manuscript.
+```{r positive values only}
+#only keep rows with positive values of ReqAmt and OblAmt
+analysisdata_2 <- analysisdata_1 %>%
+                    dplyr::filter(ReqAmt > 0 & OblAmt > 0)
+```
+
+I'm choosing not to log transform the `ReqAmt` and `OblAmt` variables in the dataset itself, as I want to retain the flexibility to either use the raw or transformed values. It is not difficult to add log(variable) in models in R to include this transformation.
+
+---
+
+### FEMA Region
+In the event the spatial cross-validation does not work at a state-level, I want to create a variable that represents each FEMA Region. There are ten FEMA Regions, which could serve as a proxy for the state variable, if necessary.
+```{r FEMA Region}
+analysisdata_2$FEMARegion <- ifelse((analysisdata_2$state == "CT" |
+                                 analysisdata_2$state == "ME" |
+                                 analysisdata_2$state == "MA" |
+                                 analysisdata_2$state == "NH" |
+                                 analysisdata_2$state == "RI" |
+                                 analysisdata_2$state == "VT"),
+                              "Region I",
+                              ifelse((analysisdata_2$state == "NJ" |
+                                         analysisdata_2$state == "NY" |
+                                         analysisdata_2$state == "PR" |
+                                         analysisdata_2$state == "VI"),
+                                      "Region II",
+                                       ifelse((analysisdata_2$state == "DE" |
+                                                 analysisdata_2$state == "MD" |
+                                                 analysisdata_2$state == "PA" |
+                                                 analysisdata_2$state == "VA" |
+                                                 analysisdata_2$state == "DC" |
+                                                 analysisdata_2$state == "WV"),
+                                              "Region III",
+                                               ifelse((analysisdata_2$state == "AL" |
+                                                         analysisdata_2$state == "FL" |
+                                                         analysisdata_2$state == "GA" |
+                                                         analysisdata_2$state == "KY" |
+                                                         analysisdata_2$state == "MS" |
+                                                         analysisdata_2$state == "NC" |
+                                                         analysisdata_2$state == "SC" |
+                                                         analysisdata_2$state == "TN"),
+                                                      "Region IV",
+                                                      ifelse((analysisdata_2$state == "IL" |
+                                                               analysisdata_2$state == "IN" |
+                                                               analysisdata_2$state == "MI" |
+                                                               analysisdata_2$state == "MN" |
+                                                               analysisdata_2$state == "OH" |
+                                                               analysisdata_2$state == "WI"),
+                                                            "Region V",
+                                                             ifelse((analysisdata_2$state == "AR" |
+                                                                         analysisdata_2$state == "LA" |
+                                                                         analysisdata_2$state == "NM" |
+                                                                         analysisdata_2$state == "OK" |
+                                                                         analysisdata_2$state == "TX"),
+                                                                      "Region VI",
+                                                                       ifelse((analysisdata_2$state == "IA" |
+                                                                                 analysisdata_2$state == "KS" |
+                                                                                 analysisdata_2$state == "MO" |
+                                                                                 analysisdata_2$state == "NE"),
+                                                                              "Region VII",
+                                                                               ifelse((analysisdata_2$state == "CO" |
+                                                                                         analysisdata_2$state == "MT" |
+                                                                                         analysisdata_2$state == "ND" |
+                                                                                         analysisdata_2$state == "SD" |
+                                                                                         analysisdata_2$state == "UT" |
+                                                                                         analysisdata_2$state == "WY"),
+                                                                                      "Region VIII",
+                                                                                       ifelse((analysisdata_2$state == "AZ" |
+                                                                                                 analysisdata_2$state == "CA" |
+                                                                                                 analysisdata_2$state == "HI" |
+                                                                                                 analysisdata_2$state == "NV"),
+                                                                                              "Region IX",
+                                                                                               ifelse((analysisdata_2$state == "AK" |
+                                                                                                         analysisdata_2$state == "ID" |
+                                                                                                         analysisdata_2$state == "OR" |
+                                                                                                         analysisdata_2$state == "WA"),
+                                                                                                      "Region X",
+                                                                                                      NA
+                                                                                                      )
+                                                                                              )
+                                                                                      )
+                                                                              )
+                                                                      )
+                                                            )
+                                                      )
+                                              )
+                                     )
+                              )
+```
+
+---
+
+### Incident Type Update
+In early iterations of the analysis, it became clear that there were a handful of incident types that were uncommon, which prevented any cross-validation sampling. There is already an existing "other" category in the raw data, so I'm moving those uncommon incident types into the "other" category.
+```{r other category}
+#add to "other" category for incident Types that are infrequent
+analysisdata_2$incidentType[(analysisdata_2$incidentType == "Chemical" |
+                        analysisdata_2$incidentType == "Coastal Storm" |
+                        analysisdata_2$incidentType == "Dam/Levee Break" |
+                        analysisdata_2$incidentType == "Mud/Landslide" |
+                        analysisdata_2$incidentType == "Volcano" |
+                        analysisdata_2$incidentType == "Terrorist" |
+                        analysisdata_2$incidentType == "Snow")] <- "Other"
+```
+
+---
+
+### Incident Month Update
+For the machine learning algorithms, I need to transform the incident month into an ordinal variable.
+```{r incident month}
+analysisdata_2$IncidentMonth <- ordered(analysisdata_2$IncidentMonth, 
+                                        levels = 1:12,
+                                        labels = c("January", 
+                                                   "February", 
+                                                   "March", 
+                                                   "April", 
+                                                   "May", 
+                                                   "June", 
+                                                   "July", 
+                                                   "August", 
+                                                   "September", 
+                                                   "October", 
+                                                   "November", 
+                                                   "December"))
+```
+
+---
+
+### Variable Labels
+This isn't a strictly necessary step, really just a personal preference. I like to embed the labels for the variables within the dataframe prior to any analysis, to make any visualization or table summarization steps easier. There are many different ways to do this, but I use the table1 package, as I find it the easiest.
+```{r labels}
+#specify variable labels
+table1::label(analysisdata_2$state) <- "State Abbreviation"
+table1::label(analysisdata_2$disasterNumber) <- "Declaration Number"
+table1::label(analysisdata_2$IncidentYear) <- "Incident Year"
+table1::label(analysisdata_2$IncidentMonth) <- "Declaration Month"
+table1::label(analysisdata_2$declarationType) <- "Declaration Type"
+table1::label(analysisdata_2$incidentType) <- "Incident Type"
+table1::label(analysisdata_2$declarationTitle) <- "Declaration Title"
+table1::label(analysisdata_2$IncidentDuration) <- "Incident Duration"
+table1::label(analysisdata_2$ResponseDays) <- "Response Duration"
+table1::label(analysisdata_2$IH) <- "Individuals/Households Program Awarded"
+table1::label(analysisdata_2$IH_pct) <- "Percent of Counties Awarded IH"
+table1::label(analysisdata_2$PA) <- "Public Assistance Program Awarded"
+table1::label(analysisdata_2$PA_pct) <- "Percent of Counties Awarded PA"
+table1::label(analysisdata_2$HM) <- "Hazard Mitigation Program"
+table1::label(analysisdata_2$HM_pct) <- "Percent of Counties Awarded HM"
+table1::label(analysisdata_2$Population) <- "State Population"
+table1::label(analysisdata_2$Counties) <- "Counties per State"
+table1::label(analysisdata_2$TotalAgencies) <- "Federal Agencies Involved"
+table1::label(analysisdata_2$ReqAmt) <- "Requested FEMA Funds"
+table1::label(analysisdata_2$OblAmt) <- "Obligated FEMA Funds"
+table1::label(analysisdata_2$FEMACSAvg) <- "Average FEMA Cost Share"
+table1::label(analysisdata_2$latitude) <- "Centroid Latitude of State"
+table1::label(analysisdata_2$longitude) <- "Centroid Longitude of State"
+table1::label(analysisdata_2$name) <- "State Name"
+table1::label(analysisdata_2$FEMARegion) <- "FEMA Region"
+```
+
+---
+
+### Rerrange Columns
+This is also just a personal preference step, but I'm rearranging the columns so that the related variables are near each other and the outcomes of interest are listed last.
+```{r rearrange}
+analysisdata_3 <- analysisdata_2 %>%
+                    dplyr::select(name,
+                                  state,
+                                  latitude,
+                                  longitude,
+                                  Population,
+                                  Counties,
+                                  FEMARegion,
+                                  disasterNumber,
+                                  declarationType,
+                                  declarationTitle,
+                                  incidentType,
+                                  IncidentYear,
+                                  IncidentMonth,
+                                  IncidentDuration,
+                                  ResponseDays,
+                                  IH,
+                                  IH_pct,
+                                  PA,
+                                  PA_pct,
+                                  HM,
+                                  HM_pct,
+                                  TotalAgencies,
+                                  FEMACSAvg,
+                                  ReqAmt,
+                                  OblAmt
+                                  )
+```
+
+---
+
+## Save Datasets
+Now that the relevant cleaning steps have been taken, we can save the processed dataset for analysis as an RDS, which maintains all of the variable formatting.
+```{r save rds}
+#location to save processed file
+analysis_data_location <- here::here("data","processed_data","analysisdata.rds")
+
+#save as an RDS
+saveRDS(analysisdata_3, file = analysis_data_location)
+```
+
+<br>
+
+For the modeling analysis (i.e. everything except the exploratory data analysis), I want two dataframes: one with only `ReqAmt` and one with only `OblAmt` as the outcomes to avoid collinearity. To that end, I'm also going to remove state name. There may be others depending on the spatial cross-validation, but for now, I'm leaving it there.
+```{r subsets}
+#for the requested amount df, dropping OblAmt and state name
+req_data <- analysisdata_3 %>%
+               dplyr::select(-c(name, OblAmt))
+
+
+#location to save processed file
+req_data_location <- here::here("data","processed_data","analysisdata-RA.rds")
+
+#save as an RDS
+saveRDS(req_data, file = req_data_location)
+
+
+
+#for the obligated amount df, dropping ReqAmt and state name
+obl_data <- analysisdata_3 %>%
+              dplyr::select(-c(name, ReqAmt))
+
+#location to save processed file
+obl_data_location <- here::here("data","processed_data","analysisdata-OA.rds")
+
+#save as an RDS
+saveRDS(obl_data, file = obl_data_location)
+```
