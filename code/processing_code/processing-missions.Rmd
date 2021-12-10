@@ -19,7 +19,8 @@ Overall, processing this dataset involves the following elements:
 * Raw data summarization and overview
 * Removal of irrelevant variables
 * Summarization of mission costs for each state and disaster declaration
-* Feature engineering to create cost share proportions
+* Feature engineering to create cost share proportions and number of government agencies involved in the response
+* Cleaning the state variable names to match the other data sources
 * Saving the processed dataset as an .rds
 
 <br>
