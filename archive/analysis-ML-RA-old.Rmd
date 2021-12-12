@@ -1,0 +1,820 @@
+---
+title: "Analysis: Machine Learning - ReqAmt"
+output: 
+  html_document:
+    theme: flatly
+    toc: FALSE
+---
+
+---
+
+## Introduction
+
+This script uses requested FEMA funds as the outcome of interest and fits the following models to the analysis data:
+
+* Null
+* Decision Tree
+* Random Forest
+* Bagged Tree
+
+It compares the  models, and then finally fits the “best” model to the test data.
+
+<br>
+
+Follow the previous processing and analysis markdowns to generate the analysis data used here.
+
+<br>
+
+Each model will follow this process:
+
+1. Model Specification
+2. Workflow Definition
+3. Tuning Grid Specification
+4. Tuning Using Cross-Validation and the tune_grid() function
+5. Identify Best Model
+6. Model Evaluation
+
+---
+
+## Required Packages
+The following R packages are required for this script:
+
+* here: for data loading/saving
+* tidyverse: for data management
+* tidymodels: for data modeling
+* skimr: for variable summaries
+* broom.mixed: for converting bayesian models to tidy tibbles
+* rpart.plot: for visualizing a decision tree
+* vip: for variable importance plots
+* glmnet: for lasso models
+* doParallel: for parallel backend for tuning processes
+* ranger: for random forest models
+* baguette: for bagged decision tree
+```{r libraries, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load required packages
+library(here) #for data loading/saving
+library(tidyverse) #for data management
+library(tidymodels) #for data modeling
+library(skimr) #for variable summaries
+library(broom.mixed) #for converting bayesian models to tidy tibbles
+library(rpart.plot) #for visualizing a decision tree
+library(vip) #for variable importance plots
+library(glmnet) #for lasso models
+library(doParallel) #for parallel backend for tuning processes
+library(ranger) #for random forest models
+library(baguette) #for bagged decision tree
+
+#global environment options
+# formatting for script to avoid scientific notation output
+options(scipen=999)
+```
+
+---
+
+## Load Data
+Load the ReqAmt analysis data from the `processed_data` folder in the project file.
+```{r load data}
+#path to data
+#note the use of the here() package and not absolute paths
+data_location <- here::here("data","processed_data","analysisdata-RA.rds")
+
+#load data. 
+analysisdata <- readRDS(data_location)
+
+#summary of data using skimr package
+skimr::skim(analysisdata)
+```
+
+---
+
+## Data Setup
+We will specify the following parameters:
+
+* Set the random seed to 123
+* Split the dataset into 70% training, 30% testing, stratified on incidentType
+* 5-fold cross validation, 5 times repeated, stratified on incidentType for the CV folds
+* Create a recipe for data and fitting that codes categorical variables as dummy variables
+```{r data setup}
+#set random seed
+set.seed(123)
+
+#split dataset into 66.6% training, 33.3% testing
+#use incidentType as stratification
+req_data_split <- rsample::initial_split(req_data, prop = 2/3,
+                                     strata = incidentType)
+
+#create dataframes for the two sets:
+req_train_data <- rsample::training(req_data_split)
+req_test_data <- rsample::testing(req_data_split)
+
+#5-fold cross validation, repeated 5 times, stratified by incidentType
+req_folds <- rsample::vfold_cv(req_train_data,
+                               strata = incidentType,
+                               v = 5,
+                               repeats = 5)
+
+#create recipe that codes categorical variables as dummy variables
+RA_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data) %>%
+          recipes::step_dummy(all_nominal_predictors())
+```
+
+---
+
+## Null Model
+Determine the performance of a null model (i.e. one with no predictors) and compute the RMSE for both training and test data.
+```{r null model}
+#create null model
+null_mod <- parsnip::null_model() %>%
+            parsnip::set_engine("parsnip") %>%
+            parsnip::set_mode("regression")
+
+#add recipe and model into workflow
+null_wflow <- workflows::workflow() %>%
+              workflows::add_recipe(RA_rec) %>%
+              workflows::add_model(null_mod)
+
+#"fit" model to training data
+req_null_train <- null_wflow %>%
+                  parsnip::fit(data = req_train_data)
+
+#summary of null model with training data to get mean (which in this case is the RMSE)
+req_null_train_sum <- broom.mixed::tidy(req_null_train)
+req_null_train_sum
+
+#RMSE for training data for formatting later
+req_null_RMSE_train <- tibble::tibble(
+                          rmse = rmse_vec(truth = req_train_data$ReqAmt,
+                                              estimate = rep(mean(req_train_data$ReqAmt), nrow(req_train_data))),
+                          SE = 0,
+                          model = "Null - Train")
+
+#"fit" model to test data
+req_null_test <- null_wflow %>%
+                  parsnip::fit(data = req_test_data)
+
+#summary of null model with test data to get mean (which in this case is the RMSE)
+req_null_test_sum <- broom.mixed::tidy(req_null_test)
+req_null_test_sum
+
+#RMSE for testing data for formatting later
+req_null_RMSE_test <- tibble::tibble(
+                          rmse = rmse_vec(truth = req_test_data$ReqAmt,
+                                              estimate = rep(mean(req_test_data$ReqAmt), nrow(req_test_data))),
+                          SE = 0,
+                          model = "Null - Test")
+```
+
+---
+
+## Decision Tree
+
+<br>
+
+### 1. Model Specification
+```{r}
+#run parallels to determine number of cores
+cores <- parallel::detectCores() - 1
+cores
+
+cl <- makeCluster(cores)
+
+registerDoParallel(cl)
+
+#define the tree model
+tree_mod <-
+  parsnip::decision_tree(cost_complexity = tune(),
+                         tree_depth = tune(),
+                         min_n = tune()) %>%
+  parsnip::set_engine("rpart") %>%
+  parsnip::set_mode("regression")
+
+#use the recipe specified earlier (line 133)
+```
+---
+
+### 2. Workflow Definition
+```{r}
+#define workflow for tree
+tree_wflow <- workflows::workflow() %>%
+               workflows::add_model(tree_mod) %>%
+               workflows::add_recipe(RA_rec)
+```
+
+---
+
+### 3. Tuning Grid Specification
+```{r}
+#tuning grid specification
+tree_grid <- dials::grid_regular(cost_complexity(),
+                                 tree_depth(),
+                                 min_n(),
+                                 levels = 5)
+
+#tree depth
+tree_grid %>%
+  dplyr::count(tree_depth)
+```
+
+---
+
+### 4. Tuning Using Cross-Validation and the `tune_grid()` function
+```{r}
+#tune the model with previously specified cross-validation and RMSE as target metric
+tree_res <- tree_wflow %>%
+                tune::tune_grid(resamples = req_folds,
+                                grid = tree_grid,
+                                control = control_grid(verbose = TRUE),
+                                metrics = yardstick::metric_set(rmse))
+
+#collect metrics
+tree_res %>% workflowsets::collect_metrics()
+
+#default visualization
+DT_auto_plot <- tree_res %>% autoplot()
+DT_auto_plot
+
+#save file
+DT_auto_fig_file = here("results","DT-auto-plot.png")
+ggsave(filename = DT_auto_fig_file, plot = DT_auto_plot)
+
+#more detailed plot
+DT_detail_plot <- tree_res %>%
+                    workflowsets::collect_metrics() %>%
+                    dplyr::mutate(tree_depth = factor(tree_depth)) %>%
+                    ggplot2::ggplot(aes(cost_complexity, mean, color = tree_depth)) +
+                             geom_line(size = 1.5, alpha = 0.6) +
+                             geom_point(size = 2) +
+                             facet_wrap(~ .metric, scales = "free", nrow = 2) +
+                             scale_x_log10(labels = scales::label_number()) +
+                             scale_color_viridis_d(option = "plasma", begin = 0.9, end = 0)
+DT_detail_plot
+
+#save file
+DT_det_fig_file = here("results","DT-det-plot.png")
+ggsave(filename = DT_det_fig_file, plot = DT_detail_plot)
+
+```
+
+---
+
+### 5. Identify Best Model
+```{r}
+#select the tree model with the lowest rmse
+tree_lowest_rmse <- tree_res %>%
+                        tune::select_best("rmse")
+
+#finalize the workflow by using the selected DT model
+best_tree_wflow <- tree_wflow %>%
+                      tune::finalize_workflow(tree_lowest_rmse)
+best_tree_wflow
+
+#one last fit on the training data
+best_tree_fit <- best_tree_wflow %>%
+                    parsnip::fit(data = req_train_data)
+```
+
+---
+
+### 6. Model evaluation
+```{r}
+#plot the tree
+rpart.plot::rpart.plot(x = workflowsets::extract_fit_parsnip(best_tree_fit)$fit,
+                                                     roundint = F,
+                                                     type = 5,
+                                                     digits = 5,
+                                                     main = "Selected Decision Tree Model")
+#save manually -- ggsave throws an error
+
+
+#find predictions and intervals
+tree_resid <- best_tree_fit %>%
+                  broom.mixed::augment(new_data = req_train_data) %>%
+                  dplyr::select(.pred, ReqAmt) %>%
+                  dplyr::mutate(.resid = .pred - ReqAmt)
+
+#plot model predictions from tuned model versus actual outcomes
+#geom_abline draws a 45 degree line, along which the results should fall
+DT_pred_act <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = ReqAmt)) +
+                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
+                        geom_point() +
+                        labs(title = "Decision Tree Fit: Predicted vs. Actual Requested Funds",
+                              x = "Predicted Requested Funds ($)",
+                              y = "Actual Requested Funds ($)")
+DT_pred_act
+
+#save file
+DT_pred_act_file = here("results","DT-pred-act.png")
+ggsave(filename = DT_pred_act_file, plot = DT_pred_act)
+
+#plot model with residuals
+#the geom_hline plots a straight horizontal line along which the results should fall
+DT_resid <- ggplot2::ggplot(tree_resid, aes(x = as.numeric(row.names(tree_resid)), y = .resid))+
+                     geom_hline(yintercept = 0, color = "red", lty = 2) +
+                     geom_point() +
+                     labs(title = "Decision Tree Fit: Residuals",
+                          x = "Observation Number",
+                          y = "Residual")
+DT_resid
+
+#save file
+DT_resid_file = here("results","DT-resid.png")
+ggsave(filename = DT_resid_file, plot = DT_resid)
+
+#plot model fit vs residuals
+#the geom_hline plots a straight horizontal line along which the results fall
+DT_pred_resid <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = .resid))+
+                          geom_hline(yintercept = 0, color = "red", lty = 2) +
+                          geom_point() +
+                          labs(title = "Decision Tree Fit: Residuals vs Fitted Requested Funds",
+                                x = "Predicted Requested Funds ($)",
+                                y = "Residual")
+DT_pred_resid
+
+#save file
+DT_pred_resid_file = here("results","DT-pred-resid.png")
+ggsave(filename = DT_pred_resid_file, plot = DT_pred_resid)
+
+#print model performance
+#print 10 best performing hyperparameter sets
+tree_res %>%
+  tune::show_best(n = 10) %>%
+  dplyr::select(rmse = mean, std_err, cost_complexity) %>%
+  dplyr::mutate(rmse = round(rmse, 3),
+                std_err = round(std_err, 4),
+                cost_complexity = scales::scientific(cost_complexity))
+
+#print the best model performance
+tree_performance <- tree_res %>% tune::show_best(n = 1)
+print(tree_performance)
+
+#compare model performance to null model
+tree_RMSE <- tree_res %>%
+                tune::show_best(n = 1) %>%
+                dplyr::transmute(
+                  rmse = round(mean, 3),
+                  SE = round(std_err, 4),
+                  model = "Tree") %>%
+               dplyr::bind_rows(req_null_RMSE_train)
+tree_RMSE
+```
+
+The identified best performing tree model has some interesting results. It identifies incident duration, state population, total number of federal agencies, total number of state counties, and individual/households program awardance as significant decision points for predicting requesting FEMA funding. All of these variables are to be expected, but it is interesting that incident type or declaration type are not included as significant. The RMSE is improved from the Null model, but there's still opportunity for improvement. Let's try another model. 
+
+<br>
+
+---
+
+## Random Forest Model
+
+<br>
+
+### 1. Model Specification
+```{r}
+#run parallels to determine number of cores
+cores <- parallel::detectCores() - 1
+cores
+
+cl <- makeCluster(cores)
+
+registerDoParallel(cl)
+
+#define the RF model
+RF_mod <-
+  parsnip::rand_forest(mtry = tune(),
+                       min_n = tune(),
+                       trees = tune()) %>%
+  parsnip::set_engine("ranger",
+                      importance = "permutation") %>%
+  parsnip::set_mode("regression")
+
+#use the recipe specified earlier (line 133)
+
+#check to make sure identified parameters will be tuned
+RF_mod %>% tune::parameters()
+```
+
+---
+
+### 2. Workflow Definition
+```{r}
+#define workflow for RF regression
+RF_wflow <- workflows::workflow() %>%
+               workflows::add_model(RF_mod) %>%
+               workflows::add_recipe(RA_rec)
+```
+
+---
+
+### 3. Tuning Grid Specification
+```{r}
+#tuning grid specification
+RF_grid <- expand.grid(mtry = c(3, 4, 5, 6),
+                       min_n = c(40, 50, 60),
+                       trees = c(500,1000))
+```
+
+---
+
+### 4. Tuning Using Cross-Validation and the `tune_grid()` function
+```{r}
+#tune the model with previously specified cross-validation and RMSE as target metric
+RF_res <- RF_wflow %>%
+              tune::tune_grid(resamples = req_folds,
+                              grid = RF_grid,
+                              control = control_grid(verbose = TRUE, save_pred = TRUE),
+                              metrics = metric_set(rmse))
+
+#look at top 5 RF models
+top_RF_models <- RF_res %>%
+                    tune::show_best("rmse", n = 5)
+top_RF_models
+
+#default visualization
+RF_auto_plot <- RF_res %>% autoplot()
+RF_auto_plot
+
+#save file
+RF_auto_fig_file = here("results","RF-auto-plot.png")
+ggsave(filename = RF_auto_fig_file, plot = RF_auto_plot)
+```
+
+---
+
+### 5. Identify Best Model
+```{r}
+#select the RF model with the lowest rmse
+RF_lowest_rmse <- RF_res %>%
+                      tune::select_best("rmse")
+
+#finalize the workflow by using the selected RF model
+best_RF_wflow <- RF_wflow %>%
+                      tune::finalize_workflow(RF_lowest_rmse)
+best_RF_wflow
+
+#one last fit on the training data
+best_RF_fit <- best_RF_wflow %>%
+                    parsnip::fit(data = req_train_data)
+```
+
+---
+
+### 6. Model evaluation
+```{r}
+#extract model from final fit
+x_RF <- best_RF_fit$fit$fit$fit
+
+#plot most important predictors in the model
+RF_plot <- vip::vip(x_RF, num_features = 20)
+RF_plot
+
+#save manually-- ggsave throws errors
+
+#find predictions and intervals
+RF_resid <- best_RF_fit %>%
+                broom.mixed::augment(new_data = req_train_data) %>%
+                dplyr::select(.pred, ReqAmt) %>%
+                dplyr::mutate(.resid = .pred - ReqAmt)
+
+#plot model predictions from tuned model versus actual outcomes
+#geom_abline is a 45 degree line, along which the results should fall
+RF_pred_act <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = ReqAmt)) +
+                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) +
+                        geom_point() +
+                        labs(title = "RF Fit: Actual vs. Predicted Requested Funds",
+                              x = "Predicted Requested Funds ($)",
+                              y = "Actual Requested Funds ($)")
+RF_pred_act
+
+#save file
+RF_pred_act_file = here("results","RF-pred-act.png")
+ggsave(filename = RF_pred_act_file, plot = RF_pred_act)
+
+#plot model with residuals
+#the geom_hline plots a straight horizontal line along which the results should fall
+RF_resids <- ggplot2::ggplot(RF_resid, aes(x = as.numeric(row.names(RF_resid)), y = .resid))+
+                            geom_hline(yintercept = 0, color = "red", lty = 2) +
+                            geom_point() +
+                            labs(title = "RF Fit: Residuals",
+                                  x = "Observation Number",
+                                  y = "Residual")
+RF_resids
+
+#save file
+RF_resid_file = here("results","RF-resid.png")
+ggsave(filename = RF_resid_file, plot = RF_resids)
+
+#plot model fit vs residuals
+#the geom_hline plots a straight horizontal line along which the results fall
+RF_pred_resid <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = .resid))+
+                          geom_hline(yintercept = 0, color = "red", lty = 2) +
+                          geom_point() +
+                          labs(title = "Random Forest Fit: Residuals vs Fitted Requested Funds",
+                                x = "Fitted Requested Funds ($)",
+                                y = "Residual")
+RF_pred_resid
+
+#save file
+RF_pred_resid_file = here("results","RF-pred-resid.png")
+ggsave(filename = RF_pred_resid_file, plot = RF_pred_resid)
+
+#print the 10 best performing hyperparameter sets
+RF_res %>%
+  tune::show_best(n = 10) %>%
+  dplyr::select(rmse = mean, std_err)
+
+#print the best model
+RF_performance <- RF_res %>% tune::show_best(n = 1)
+RF_performance
+
+#compare model performance to null model (and other models)
+RF_RMSE <- RF_res %>%
+              tune::show_best(n = 1) %>%
+              dplyr::transmute(
+                rmse = round(mean, 3),
+                SE = round(std_err, 4),
+                model = "RF") %>%
+             dplyr::bind_rows(tree_RMSE)
+RF_RMSE
+```
+
+In examining the results of the RF model within the context of RMSE, it performs marginally better than the decision tree. Interestingly, it includes declaration month of Jan - March as more important than state population. Let's try one more model.
+
+---
+
+## Bagged Decision Tree Model
+
+<br>
+
+### 1. Model Specification
+```{r}
+#run parallels to determine number of cores
+cores <- parallel::detectCores() - 1
+cores
+
+cl <- makeCluster(cores)
+
+registerDoParallel(cl)
+
+#start over with data split to allow for bootstrapping
+#set random seed
+set.seed(20140102)
+
+#use bootstrap instead of CV
+req_data_bootsplit <- req_train_data %>%
+                        rsample::bootstraps(times = 10,
+                                            strata = "incidentType")
+
+#define model
+bag_tree_mod <- baguette::bag_tree(cost_complexity = tune(),
+                                   tree_depth = tune(),
+                                   min_n = tune()) %>%
+                parsnip::set_engine("rpart",
+                                    times = 10) %>%
+                parsnip::set_mode("regression")
+
+#create recipe that codes categorical variables as dummy variables
+BT_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data) %>%
+          step_string2factor(all_nominal())
+```
+---
+
+### 2. Workflow Definition
+```{r}
+#define workflow for tree
+BT_wflow <- workflows::workflow() %>%
+               workflows::add_model(bag_tree_mod) %>%
+               workflows::add_recipe(BT_rec)
+```
+
+---
+
+### 3. Tuning Grid Specification
+```{r}
+#tuning grid specification
+tree_grid <- dials::grid_regular(cost_complexity(),
+                                 tree_depth(),
+                                 min_n(),
+                                 levels = 5)
+```
+
+---
+
+### 4. Tuning Using Cross-Validation and the `tune_grid()` function
+```{r}
+#tune the model with previously specified cross-validation and RMSE as target metric
+BT_res <- baguette::bag_tree(cost_complexity = tune(),
+                                   tree_depth = tune(),
+                                   min_n = tune()) %>%
+          parsnip::set_engine("rpart",
+                              times = 10) %>%
+          parsnip::set_mode("regression") %>%
+          tune::tune_grid(preprocessor = BT_rec,
+                          resamples = req_data_bootsplit,
+                          grid = tree_grid,
+                          metrics = metric_set(rmse))
+
+#collect metrics
+BT_res %>% workflowsets::collect_metrics()
+
+#default visualization
+BT_auto_plot <- BT_res %>% autoplot()
+BT_auto_plot
+
+#save file
+BT_auto_fig_file = here("results","BT-auto-plot.png")
+ggsave(filename = BT_auto_fig_file, plot = BT_auto_plot)
+
+#more detailed plot
+BT_det_plot <- BT_res %>%
+                    workflowsets::collect_metrics() %>%
+                    dplyr::mutate(tree_depth = factor(tree_depth)) %>%
+                    ggplot2::ggplot(aes(cost_complexity, mean, color = tree_depth)) +
+                             geom_line(size = 1.5, alpha = 0.6) +
+                             geom_point(size = 2) +
+                             facet_wrap(~ .metric, scales = "free", nrow = 2) +
+                             scale_x_log10(labels = scales::label_number()) +
+                             scale_color_viridis_d(option = "plasma", begin = 0.9, end = 0)
+BT_det_plot
+
+#save file
+BT_det_fig_file = here("results","BT-det-plot.png")
+ggsave(filename = BT_det_fig_file, plot = BT_det_plot)
+```
+
+---
+
+### 5. Identify Best Model
+```{r}
+#select the BT model with the lowest rmse
+BT_lowest_rmse <- BT_res %>%
+                        tune::select_best("rmse")
+
+#finalize the workflow by using the selected BT model
+best_BT_wflow <- BT_wflow %>%
+                      tune::finalize_workflow(BT_lowest_rmse)
+best_BT_wflow
+
+#one last fit on the training data
+best_BT_fit <- best_BT_wflow %>%
+                    parsnip::fit(data = req_train_data)
+```
+
+---
+
+### 6. Model evaluation
+```{r}
+#extract model from final fit
+x_BT <- best_BT_fit$fit$fit$fit
+
+#vip package doesn't support BT
+
+#find predictions and intervals
+BT_resid <- best_BT_fit %>%
+                  broom.mixed::augment(new_data = req_train_data) %>%
+                  dplyr::select(.pred, ReqAmt) %>%
+                  dplyr::mutate(.resid = .pred - ReqAmt)
+
+#plot model predictions from tuned model versus actual outcomes
+#geom_abline draws a 45 degree line, along which the results should fall
+BT_pred_act <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = ReqAmt)) +
+                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
+                        geom_point() +
+                        labs(title = "Bagged Tree Fit: Predicted vs. Actual Requested Funds",
+                              x = "Predicted Requested Funds ($)",
+                              y = "Actual Requested Funds ($)")
+BT_pred_act
+
+#save file
+BT_pred_act_file = here("results","BT-pred-act.png")
+ggsave(filename = BT_pred_act_file, plot = BT_pred_act)
+
+#plot model with residuals
+#the geom_hline plots a straight horizontal line along which the results should fall
+BT_resids <- ggplot2::ggplot(BT_resid, aes(x = as.numeric(row.names(BT_resid)), y = .resid))+
+                      geom_hline(yintercept = 0, color = "red", lty = 2) +
+                      geom_point() +
+                      labs(title = "Bagged Tree Fit: Residuals",
+                            x = "Observation Number",
+                            y = "Residual")
+BT_resids
+
+#save file
+BT_resid_file = here("results","BT-resid.png")
+ggsave(filename = BT_resid_file, plot = BT_resids)
+
+#plot model fit vs residuals
+#the geom_hline plots a straight horizontal line along which the results fall
+BT_pred_resid <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = .resid))+
+                          geom_hline(yintercept = 0, color = "red", lty = 2) +
+                          geom_point() +
+                          labs(title = "Bagged Tree Fit: Residuals vs Fitted Requested Funds",
+                                x = "Predicted Requested Funds ($)",
+                                y = "Residual")
+BT_pred_resid
+
+#save file
+BT_pred_resid_file = here("results","BT-pred-resid.png")
+ggsave(filename = BT_pred_resid_file, plot = BT_pred_resid)
+
+#print model performance
+#print 10 best performing hyperparameter sets
+BT_res %>%
+  tune::show_best(n = 10) %>%
+  dplyr::select(rmse = mean, std_err, cost_complexity) %>%
+  dplyr::mutate(rmse = round(rmse, 3),
+                std_err = round(std_err, 4),
+                cost_complexity = scales::scientific(cost_complexity))
+
+#print the best model performance
+BT_performance <- BT_res %>% tune::show_best(n = 1)
+print(BT_performance)
+
+#compare model performance to null model
+BT_RMSE <- BT_res %>%
+                tune::show_best(n = 1) %>%
+                dplyr::transmute(
+                  rmse = round(mean, 3),
+                  SE = round(std_err, 4),
+                  model = "Bagged Tree") %>%
+               dplyr::bind_rows(RF_RMSE)
+BT_RMSE
+
+#save combined table
+model_comp_file = here("results", "ML-model-comp.Rds")
+saveRDS(BT_RMSE, file = model_comp_file)
+```
+
+In examining the models, the Bagged Tree has the best RMSE, but it also has a higher SE than the other models. We will still choose the bagged tree as our model on which to evaluate the test data.
+
+--
+
+## Model Selection and Evaluation
+Using the bagged tree model
+```{r}
+#fit model to training set but evaluate on the test data
+BT_fit_test <- best_BT_wflow %>%
+                    tune::last_fit(split = req_data_split)
+
+#compare test performance against training performance
+BT_rmse_test <- collect_metrics(BT_fit_test) %>%
+  dplyr::select(rmse = .estimate) %>%
+  dplyr::mutate(data = "test")
+
+BT_comp <- BT_RMSE %>%
+                  dplyr::filter(model == "Bagged Tree") %>%
+                  dplyr::transmute(rmse, data = "train") %>%
+                  dplyr::bind_rows(BT_rmse_test) %>%
+                  dplyr::slice(-3) #don't know why the third row shows up
+BT_comp
+#RMSEs are incredibly different...
+
+#find predictions and intervals
+BT_resid_fit <- BT_fit_test %>%
+                  broom.mixed::augment() %>%
+                  dplyr::select(.pred, ReqAmt) %>%
+                  dplyr::mutate(.resid = .pred - ReqAmt)
+
+#plot model predictions from tuned model versus actual outcomes
+#geom_abline draws a 45 degree line, along which the results should fall
+BT_pred_act_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = ReqAmt)) +
+                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
+                        geom_point() +
+                        labs(title = "Bagged Tree Test Fit: Predicted vs. Actual Requested Funds",
+                              x = "Predicted Requested Funds ($)",
+                              y = "Actual Requested Funds ($)")
+BT_pred_act_test
+
+#save file
+BT_pred_act_test_file = here("results","BT-pred-act-test.png")
+ggsave(filename = BT_pred_act_test_file, plot = BT_pred_act_test)
+
+#plot model with residuals
+#the geom_hline plots a straight horizontal line along which the results should fall
+BT_resids_test <- ggplot2::ggplot(BT_resid_fit, aes(x = as.numeric(row.names(BT_resid_fit)), y = .resid))+
+                      geom_hline(yintercept = 0, color = "red", lty = 2) +
+                      geom_point() +
+                      labs(title = "Bagged Tree Test Fit: Residuals",
+                            x = "Observation Number",
+                            y = "Residual")
+BT_resids_test
+
+#save file
+BT_resid_test_file = here("results","BT-resid-test.png")
+ggsave(filename = BT_resid_test_file, plot = BT_resids_test)
+
+#plot model fit vs residuals
+#the geom_hline plots a straight horizontal line along which the results fall
+BT_pred_resid_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = .resid))+
+                          geom_hline(yintercept = 0, color = "red", lty = 2) +
+                          geom_point() +
+                          labs(title = "Bagged Tree Test Fit: Residuals vs Fitted Requested Funds",
+                                x = "Predicted Requested Funds ($)",
+                                y = "Residual")
+BT_pred_resid_test
+
+#save file
+BT_pred_resid_test_file = here("results","BT-pred-resid-test.png")
+ggsave(filename = BT_pred_resid_test_file, plot = BT_pred_resid_test)
+```

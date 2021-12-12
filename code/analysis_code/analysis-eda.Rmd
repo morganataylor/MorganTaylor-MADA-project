@@ -62,8 +62,11 @@ library(table1) #for making summary tables
 # formatting for script to avoid scientific notation output
 options(scipen=999)
 
-# globally set theme for ggplots
+#set ggplot theme to classic
 ggplot2::theme_set(theme_classic())
+
+#center plot titles
+theme_update(plot.title = element_text(hjust = 0.5))
 ```
 
 ---
@@ -72,7 +75,7 @@ ggplot2::theme_set(theme_classic())
 Load the data generated from the markdowns in the `processing_code` folder.
 ```{r load data}
 #define file path
-data_location <- here::here("data", "processed_data", "combinedprocessed.rds")
+data_location <- here::here("data", "processed_data", "analysisdata.rds")
 
 #load data
 EDAdata <- readRDS(data_location)
@@ -84,13 +87,15 @@ EDAdata <- readRDS(data_location)
 To better understand the data, let's use `summarytools` to better visualize the data.
 ```{r data overview}
 summarytools::dfSummary(EDAdata)
+
+skimr::skim(EDAdata)
 ```
 Looking at the output of `summarytools::dfsummary()`
 
 * There are 445 distinct disaster numbers across 2012 - 2021
-* `OblAmt` ranges from -\$855,200.3 to \$4,408,424,297
-* `ReqAmt` ranges from -\$855,200.3 to \$4,388,540,486
-* There are 16 possible incident types
+* `OblAmt` ranges from -\$0 to \$4,408,424,297
+* `ReqAmt` ranges from -\$0 to \$4,388,540,486
+* There are 9 possible incident types
 * There is a clear effect of both incident month and incident year
 
 Let's dive a little deeper into each variable.
@@ -108,7 +113,6 @@ ggplot2::ggplot(data = EDAdata, aes(x = ReqAmt)) +
   geom_density()
 
 #try a log transformation out of curiosity 
-#this does ignore all negative values
 ggplot2::ggplot(data = EDAdata, aes(x = log(ReqAmt))) +
   geom_density()
 
@@ -128,7 +132,7 @@ ggplot2::ggplot(data = EDAdata, aes(y = log(ReqAmt))) +
 ##QQ plot
 car::qqPlot(EDAdata$ReqAmt)
 ```
-These outputs show the requested amounts do not follow a normal distribution, which is to be expected given the broad range of disasters. We may need to remove outliers in the analysis, but for now, we'll leave them to capture the true nature of disaster declarations. The largest outlier is likely the COVID-19 Pandemic. The log transformation does a better job of showing the distribution of the data, so we may need to consider an exponential model in the analysis; however, log(negative number) is undefined, so we would be ignoring all reimbursement data. The transformed and untransformed figures suggest there are significant tails in the data. 
+These outputs show the requested amounts do not follow a normal distribution, which is to be expected given the broad range of disasters. We may need to remove outliers in the analysis, but for now, we'll leave them to capture the true nature of disaster declarations. The largest outlier is likely Hurricane Maria. The log transformation does a better job of showing the distribution of the data, so we may need to consider an exponential model in the analysis. The transformed and untransformed figures suggest there are significant tails in the data. 
 
 ---
 
@@ -163,6 +167,15 @@ ggplot2::ggplot(data = EDAdata, aes(y = log(OblAmt))) +
 car::qqPlot(EDAdata$OblAmt)
 ```
 It appears that obligated funds and requested funds have similar distributions and characteristics. The same commentary about the requested funds analysis applies here as well.
+
+Before moving on, I want to create a plot of Requested vs obligated Funds to understand the relationship between the two outcomes:
+```{r}
+funds_comp <- EDAdata %>%
+                ggplot2::ggplot(aes(x = log(ReqAmt), y = log(OblAmt))) +
+                         geom_point()
+
+funds_comp
+```
 
 ---
 
