@@ -18,7 +18,7 @@ This script uses requested FEMA funds as the outcome of interest and fits the fo
 * Elastic Net
 * LASSO
 
-It compares the  models, and then finally fits the “best” model to the test data. It also removes the clear outliers in the original analysis.
+It compares the  models, and then finally fits the “best” model to the test data. It also removes the clear outliers in the original analysis where the log(ReqAmt) was less than zero.
 
 <br>
 
@@ -265,7 +265,7 @@ DT_auto_plot <- tree_res %>% autoplot()
 DT_auto_plot
 
 #save file
-DT_auto_fig_file = here("results","DT-auto-plot.png")
+DT_auto_fig_file = here("results","DT-auto-plot-outlier.png")
 ggsave(filename = DT_auto_fig_file, plot = DT_auto_plot)
 
 #more detailed plot
@@ -284,7 +284,7 @@ DT_detail_plot <- tree_res %>%
 DT_detail_plot
 
 #save file
-DT_det_fig_file = here("results","DT-det-plot.png")
+DT_det_fig_file = here("results","DT-det-plot-outlier.png")
 ggsave(filename = DT_det_fig_file, plot = DT_detail_plot)
 
 ```
@@ -320,7 +320,7 @@ rpart.plot::rpart.plot(x = workflowsets::extract_fit_parsnip(best_tree_fit)$fit,
                                                      box.palette = viridis::viridis(10, option = "D", begin = 0.9, end = 0),
                                                      shadow.col = "grey65",
                                                      col = "grey99")
-#save manually as "DT-plot.png" -- ggsave throws an error
+#save manually as "DT-plot-outlier.png" -- ggsave throws an error
 
 
 #find predictions and intervals
@@ -343,7 +343,7 @@ DT_pred_act <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = log_req_amt)) +
 DT_pred_act
 
 #save file
-DT_pred_act_file = here("results","DT-pred-act.png")
+DT_pred_act_file = here("results","DT-pred-act-outlier.png")
 ggsave(filename = DT_pred_act_file, plot = DT_pred_act)
 
 #plot model with residuals
@@ -357,7 +357,7 @@ DT_resid <- ggplot2::ggplot(tree_resid, aes(x = as.numeric(row.names(tree_resid)
 DT_resid
 
 #save file
-DT_resid_file = here("results","DT-resid.png")
+DT_resid_file = here("results","DT-resid-outlier.png")
 ggsave(filename = DT_resid_file, plot = DT_resid)
 
 #plot model fit vs residuals
@@ -371,7 +371,7 @@ DT_pred_resid <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = .resid))+
 DT_pred_resid
 
 #save file
-DT_pred_resid_file = here("results","DT-pred-resid.png")
+DT_pred_resid_file = here("results","DT-pred-resid-outlier.png")
 ggsave(filename = DT_pred_resid_file, plot = DT_pred_resid)
 
 #print model performance
@@ -398,7 +398,7 @@ tree_RMSE <- tree_res %>%
 tree_RMSE
 ```
 
-The identified best performing tree model has some interesting results. It identifies percent of state counties awarded IH program, New York, longitude, total number of agencies, FEMA cost share average, total response days, and an incident month of November for predicting requested FEMA funding. New York and November are particularly surprising key predictors. It is interesting that incident type or declaration type are not included as significant. The RMSE actually increases from the Null, which suggests this is not an appropriate model. Moving on.
+The identified best performing tree model has some interesting results. It identifies percent of state counties awarded IH program, total number of agencies involved, total number of counties per state, percent of counties awarded PA program, FEMA Region VI, incident month of October and March as important predictors. It is interesting that incident type or declaration type are not included as significant. The RMSE does decrease from the null, which suggests the outlier removal was a necessary step. Let's explore the other models.
 
 <br>
 
@@ -474,7 +474,7 @@ RF_auto_plot <- RF_res %>% autoplot()
 RF_auto_plot
 
 #save file
-RF_auto_fig_file = here("results","RF-auto-plot.png")
+RF_auto_fig_file = here("results","RF-auto-plot-outlier.png")
 ggsave(filename = RF_auto_fig_file, plot = RF_auto_plot)
 ```
 
@@ -510,7 +510,7 @@ RF_plot <- vip::vip(x_RF,
                     aesthetics = list(fill = viridis::viridis(20, option = "D", begin = 0.9, end = 0)))
 RF_plot
 
-#save manually as "RF-plot.png" -- ggsave throws errors
+#save manually as "RF-plot-outlier.png" -- ggsave throws errors
 
 #find predictions and intervals
 RF_resid <- best_RF_fit %>%
@@ -532,7 +532,7 @@ RF_pred_act <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = log_req_amt)) +
 RF_pred_act
 
 #save file
-RF_pred_act_file = here("results","RF-pred-act.png")
+RF_pred_act_file = here("results","RF-pred-act-outlier.png")
 ggsave(filename = RF_pred_act_file, plot = RF_pred_act)
 
 #plot model with residuals
@@ -546,7 +546,7 @@ RF_resids <- ggplot2::ggplot(RF_resid, aes(x = as.numeric(row.names(RF_resid)), 
 RF_resids
 
 #save file
-RF_resid_file = here("results","RF-resid.png")
+RF_resid_file = here("results","RF-resid-outlier.png")
 ggsave(filename = RF_resid_file, plot = RF_resids)
 
 
@@ -561,7 +561,7 @@ RF_pred_resid <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = .resid))+
 RF_pred_resid
 
 #save file
-RF_pred_resid_file = here("results","RF-pred-resid.png")
+RF_pred_resid_file = here("results","RF-pred-resid-outlier.png")
 ggsave(filename = RF_pred_resid_file, plot = RF_pred_resid)
 
 #print the 10 best performing hyperparameter sets
@@ -584,7 +584,7 @@ RF_RMSE <- RF_res %>%
 RF_RMSE
 ```
 
-In examining the results of the RF model within the context of RMSE, it performs marginally better than the decision tree. It identifies total number of federal agencies involved, percent of state counties awarded IH, FEMA cost share average, percent of counties awarded HM, and whether or not IH was awarded to any part of the state as the five most important predictors. Let's try another model to see if we can find an improvement in the RMSE.
+In examining the results of the RF model within the context of RMSE, it performs marginally better than the decision tree. It identifies percent of counties awarded IH program, total number of federal agencies involved, percent of counties awarded HM program, average FEMA cost share, and whether or not the IH program was awarded to any county in the state as the five most important predictors. Let's try another model to see if we can find an improvement in the RMSE.
 
 ---
 
@@ -650,7 +650,7 @@ EN_auto_plot <- EN_res %>% autoplot()
 EN_auto_plot
 
 #save file
-EN_auto_fig_file = here("results","EN-auto-plot.png")
+EN_auto_fig_file = here("results","EN-auto-plot-outlier.png")
 ggsave(filename = EN_auto_fig_file, plot = EN_auto_plot)
 ```
 
@@ -687,7 +687,7 @@ EN_plot <- vip::vip(x_EN,
                     aesthetics = list(fill = viridis::viridis(20, option = "D", begin = 0.9, end = 0)))
 EN_plot
 
-#save manually as "EN-plot.png" -- ggsave throws errors
+#save manually as "EN-plot-outlier.png" -- ggsave throws errors
 
 #find predictions and intervals
 EN_resid <- best_EN_fit %>%
@@ -709,7 +709,7 @@ EN_pred_act <- ggplot2::ggplot(EN_resid, aes(x = .pred, y = log_req_amt)) +
 EN_pred_act
 
 #save file
-EN_pred_act_file = here("results","EN-pred-act.png")
+EN_pred_act_file = here("results","EN-pred-act-outlier.png")
 ggsave(filename = EN_pred_act_file, plot = EN_pred_act)
 
 #plot model with residuals
@@ -723,7 +723,7 @@ EN_resids <- ggplot2::ggplot(EN_resid, aes(x = as.numeric(row.names(EN_resid)), 
 EN_resids
 
 #save file
-EN_resid_file = here("results","EN-resid.png")
+EN_resid_file = here("results","EN-resid-outlier.png")
 ggsave(filename = EN_resid_file, plot = EN_resids)
 
 
@@ -738,7 +738,7 @@ EN_pred_resid <- ggplot2::ggplot(EN_resid, aes(x = .pred, y = .resid))+
 EN_pred_resid
 
 #save file
-EN_pred_resid_file = here("results","EN-pred-resid.png")
+EN_pred_resid_file = here("results","EN-pred-resid-outlier.png")
 ggsave(filename = EN_pred_resid_file, plot = EN_pred_resid)
 
 #print the 10 best performing hyperparameter sets
@@ -760,7 +760,7 @@ EN_RMSE <- EN_res %>%
              dplyr::bind_rows(RF_RMSE)
 EN_RMSE
 ```
-The Elastic Net model places great emphasis on FEMA Cost Share average above all other predictors. The next closest predictors include Hawaii, New York, New Mexico, and DC as key predictors. The EN model has an improved RMSE, but the null model technically still has a lower RMSE.
+The Elastic Net model places great emphasis on Maine being the state receving the declaration. The next closest predictors include average FEMA cost share, Vermont, Montana, and Idaho. The EN model has an improved RMSE from the DT model but not the RF model. Let's try LASSO just to round out the analysis.
 
 ---
 
@@ -834,7 +834,7 @@ lasso_auto_plot <- lasso_res %>% autoplot()
 lasso_auto_plot
 
 #save file
-lasso_auto_fig_file = here("results","lasso-auto-plot.png")
+lasso_auto_fig_file = here("results","lasso-auto-plot-outlier.png")
 ggsave(filename = lasso_auto_fig_file, plot = lasso_auto_plot)
 ```
 
@@ -871,7 +871,7 @@ lasso_plot <- vip::vip(x_lasso,
                     aesthetics = list(fill = viridis::viridis(20, option = "D", begin = 0.9, end = 0)))
 lasso_plot
 
-#save manually as "LASSO-plot.png" -- ggsave throws errors
+#save manually as "LASSO-plot-outlier.png" -- ggsave throws errors
 
 #find predictions and intervals
 lasso_resid <- best_lasso_fit %>%
@@ -893,7 +893,7 @@ lasso_pred_act <- ggplot2::ggplot(lasso_resid, aes(x = .pred, y = log_req_amt)) 
 lasso_pred_act
 
 #save file
-lasso_pred_act_file = here("results","lasso-pred-act.png")
+lasso_pred_act_file = here("results","lasso-pred-act-outlier.png")
 ggsave(filename = lasso_pred_act_file, plot = lasso_pred_act)
 
 #plot model with residuals
@@ -907,7 +907,7 @@ lasso_resids <- ggplot2::ggplot(lasso_resid, aes(x = as.numeric(row.names(lasso_
 lasso_resids
 
 #save file
-lasso_resid_file = here("results","lasso-resid.png")
+lasso_resid_file = here("results","lasso-resid-outlier.png")
 ggsave(filename = lasso_resid_file, plot = lasso_resids)
 
 
@@ -922,7 +922,7 @@ lasso_pred_resid <- ggplot2::ggplot(lasso_resid, aes(x = .pred, y = .resid))+
 lasso_pred_resid
 
 #save file
-lasso_pred_resid_file = here("results","lasso-pred-resid.png")
+lasso_pred_resid_file = here("results","lasso-pred-resid-outlier.png")
 ggsave(filename = lasso_pred_resid_file, plot = lasso_pred_resid)
 
 #print the 10 best performing hyperparameter sets
@@ -953,74 +953,74 @@ The LASSO model fit is almost identical to the Elastic Net model fit.
 ---
 
 ## Model Selection and Evaluation
-Based on the results of the models above, the null model actually has the best fit, which warrants further investigation (Especially with the outliers). In the mean time, we'll fit the LASSO model as it has the best fit out of the models.
+Based on the results of the model comparison table, all of the models have a similar fit. However, RF has the lowest RMSE, so we will fit that to the test data.
 ```{r}
 #fit model to training set but evaluate on the test data
-lasso_fit_test <- best_lasso_wflow %>%
+RF_fit_test <- best_RF_wflow %>%
                     tune::last_fit(split = req_data_split)
 
 #compare test performance against training performance
-lasso_rmse_test <- collect_metrics(lasso_fit_test) %>%
+RF_rmse_test <- collect_metrics(RF_fit_test) %>%
                    dplyr::select(rmse = .estimate) %>%
                    dplyr::mutate(data = "test")
 
-lasso_comp <- lasso_RMSE %>%
-                  dplyr::filter(model == "LASSO") %>%
+test_comp <- RF_RMSE %>%
+                  dplyr::filter(model == "Random Forest") %>%
                   dplyr::transmute(rmse, data = "train") %>%
-                  dplyr::bind_rows(lasso_rmse_test) %>%
+                  dplyr::bind_rows(RF_rmse_test) %>%
                   dplyr::slice(-3) #don't know why the third row shows up
-lasso_comp
-#RMSEs are different but not as much as previous iterations 
+test_comp
+#RMSEs are very different (but lower in test data?) 
 
 #save combined table
-test_comp_file = here("results", "test-train-model-comp.Rds")
-saveRDS(lasso_comp, file = test_comp_file)
+test_comp_file = here("results", "test-train-model-comp-outlier.Rds")
+saveRDS(test_comp, file = test_comp_file)
 
 #find predictions and intervals
-lasso_resid_fit <- lasso_fit_test %>%
+RF_resid_fit <- RF_fit_test %>%
                       broom.mixed::augment() %>%
                       dplyr::select(.pred, log_req_amt) %>%
                       dplyr::mutate(.resid = .pred - log_req_amt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline draws a 45 degree line, along which the results should fall
-lasso_pred_act_test <- ggplot2::ggplot(lasso_resid_fit, aes(x = .pred, y = log_req_amt)) +
+RF_pred_act_test <- ggplot2::ggplot(RF_resid_fit, aes(x = .pred, y = log_req_amt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
                         geom_point(color = "#3b528b") +
-                        labs(title = "LASSO Test Fit: Predicted vs. Actual Log(Requested Funds)",
+                        labs(title = "RF Test Fit: Predicted vs. Actual Log(Requested Funds)",
                               x = "Predicted Log(Requested Funds) ($)",
                               y = "Actual Log(Requested Funds) ($)")
-lasso_pred_act_test
+RF_pred_act_test
 
 #save file
-lasso_pred_act_test_file = here("results","lasso-pred-act-test.png")
-ggsave(filename = lasso_pred_act_test_file, plot = lasso_pred_act_test)
+RF_pred_act_test_file = here("results","RF-pred-act-test-outlier.png")
+ggsave(filename = RF_pred_act_test_file, plot = RF_pred_act_test)
 
 #plot model with residuals
 #the geom_hline plots a straight horizontal line along which the results should fall
-lasso_resids_test <- ggplot2::ggplot(lasso_resid_fit, aes(x = as.numeric(row.names(lasso_resid_fit)), y = .resid))+
+RF_resids_test <- ggplot2::ggplot(RF_resid_fit, aes(x = as.numeric(row.names(RF_resid_fit)), y = .resid))+
                       geom_hline(yintercept = 0, color = "red", lty = 2) +
                       geom_point(color = "#3b528b") +
-                      labs(title = "LASSO Test Fit: Residuals",
+                      labs(title = "RF Test Fit: Residuals",
                             x = "Observation Number",
                             y = "Residual")
-lasso_resids_test
+RF_resids_test
 
 #save file
-lasso_resid_test_file = here("results","lasso-resid-test.png")
-ggsave(filename = lasso_resid_test_file, plot = lasso_resids_test)
+RF_resid_test_file = here("results","RF-resid-test-outlier.png")
+ggsave(filename = RF_resid_test_file, plot = RF_resids_test)
 
 #plot model fit vs residuals
 #the geom_hline plots a straight horizontal line along which the results fall
-lasso_pred_resid_test <- ggplot2::ggplot(lasso_resid_fit, aes(x = .pred, y = .resid))+
+RF_pred_resid_test <- ggplot2::ggplot(RF_resid_fit, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
                           geom_point(color = "#3b528b") +
-                          labs(title = "LASSO Test Fit: Residuals vs Fitted Log(Requested Funds)",
+                          labs(title = "RF Test Fit: Residuals vs Fitted Log(Requested Funds)",
                                 x = "Predicted Log(Requested Funds) ($)",
                                 y = "Residuals")
-lasso_pred_resid_test
+RF_pred_resid_test
 
 #save file
-lasso_pred_resid_test_file = here("results","lasso-pred-resid-test.png")
-ggsave(filename = lasso_pred_resid_test_file, plot = lasso_pred_resid_test)
+RF_pred_resid_test_file = here("results","RF-pred-resid-test-outlier.png")
+ggsave(filename = RF_pred_resid_test_file, plot = RF_pred_resid_test)
 ```

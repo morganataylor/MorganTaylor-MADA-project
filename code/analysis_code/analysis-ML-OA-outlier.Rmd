@@ -15,9 +15,10 @@ This script uses obligated FEMA funds as the outcome of interest and fits the fo
 * Null
 * Decision Tree
 * Random Forest
-* Bagged Tree
+* Elastic Net
+* LASSO
 
-It compares the  models, and then finally fits the “best” model to the test data. It removes the $4B outlier that corresponds to Hurricane Maria in Puerto Rico in 2017.
+It compares the  models, and then finally fits the “best” model to the test data. It also removes the clear outliers in the original analysis where the log(OblAmt) was less than zero.
 
 <br>
 
@@ -43,6 +44,7 @@ The following R packages are required for this script:
 * tidyverse: for data management
 * tidymodels: for data modeling
 * skimr: for variable summaries
+* spatialsample: for spatial cross-validation
 * broom.mixed: for converting bayesian models to tidy tibbles
 * rpart.plot: for visualizing a decision tree
 * vip: for variable importance plots
@@ -50,6 +52,7 @@ The following R packages are required for this script:
 * doParallel: for parallel backend for tuning processes
 * ranger: for random forest models
 * baguette: for bagged decision tree
+* viridis: for a consistent color scheme in figures
 ```{r libraries, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -58,6 +61,7 @@ library(here) #for data loading/saving
 library(tidyverse) #for data management
 library(tidymodels) #for data modeling
 library(skimr) #for variable summaries
+library(spatialsample) #for spatial cross validation
 library(broom.mixed) #for converting bayesian models to tidy tibbles
 library(rpart.plot) #for visualizing a decision tree
 library(vip) #for variable importance plots
@@ -65,20 +69,27 @@ library(glmnet) #for lasso models
 library(doParallel) #for parallel backend for tuning processes
 library(ranger) #for random forest models
 library(baguette) #for bagged decision tree
+library(viridis) #for a consistent color scheme in figures
 
 #global environment options
 # formatting for script to avoid scientific notation output
 options(scipen=999)
+
+#set ggplot theme to classic
+ggplot2::theme_set(theme_classic())
+
+#center plot titles
+theme_update(plot.title = element_text(hjust = 0.5))
 ```
 
 ---
 
 ## Load Data
-Load the analysis data from the `processed_data` folder in the project file.
+Load the OblAmt analysis data from the `processed_data` folder in the project file.
 ```{r load data}
 #path to data
 #note the use of the here() package and not absolute paths
-data_location <- here::here("data","processed_data","analysisdata.rds")
+data_location <- here::here("data","processed_data","analysisdata-OA.rds")
 
 #load data. 
 analysisdata <- readRDS(data_location)
@@ -92,136 +103,49 @@ skimr::skim(analysisdata)
 ## Data Setup
 We will specify the following parameters:
 
-* Drop the unused variables
-* Perform feature engineering
-* Transform Incident Month into ordinal variable
-* Remove outlier
+* Log transform the outcome
+* Drop `OblAmt`, `disasterNumber`, `declarationTitle`
+* Remove the obvious outliers (-log(OblAmt))
 * Set the random seed to 123
-* Split the dataset into 70% training, 30% testing, stratified on incidentType
-* 5-fold cross validation, 5 times repeated, stratified on incidentType for the CV folds
+* Split the dataset into 70% training, 30% testing
+* 5-fold cross validation for the spatial CV folds
 * Create a recipe for data and fitting that codes categorical variables as dummy variables
 ```{r data setup}
-#requested amount filter
-obl_data <- analysisdata %>%
-              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
-                            Population, Counties, TotalAgencies, FEMACSAvg, OblAmt)
+#log transform OblAmt
+analysisdata$logOblAmt <- log(analysisdata$OblAmt)
 
-#transform incident month into ordinal variable
-obl_data$IncidentMonth <- ordered(obl_data$IncidentMonth, levels = 1:12,
-                                  labels = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"))
+#drop unnecessary variables
+obl_data_2 <- analysisdata %>%
+              dplyr::select(-c(OblAmt, disasterNumber, declarationTitle))
 
-#not enough values per state, so create a variable that is FEMA Regions
-obl_data$FEMARegion <- ifelse((obl_data$state == "CT" |
-                                 obl_data$state == "ME" |
-                                 obl_data$state == "MA" |
-                                 obl_data$state == "NH" |
-                                 obl_data$state == "RI" |
-                                 obl_data$state == "VT"),
-                              "Region I",
-                              ifelse((obl_data$state == "NJ" |
-                                         obl_data$state == "NY" |
-                                         obl_data$state == "PR" |
-                                         obl_data$state == "VI"),
-                                      "Region II",
-                                       ifelse((obl_data$state == "DE" |
-                                                 obl_data$state == "MD" |
-                                                 obl_data$state == "PA" |
-                                                 obl_data$state == "VA" |
-                                                 obl_data$state == "DC" |
-                                                 obl_data$state == "WV"),
-                                              "Region III",
-                                               ifelse((obl_data$state == "AL" |
-                                                         obl_data$state == "FL" |
-                                                         obl_data$state == "GA" |
-                                                         obl_data$state == "KY" |
-                                                         obl_data$state == "MS" |
-                                                         obl_data$state == "NC" |
-                                                         obl_data$state == "SC" |
-                                                         obl_data$state == "TN"),
-                                                      "Region IV",
-                                                      ifelse((obl_data$state == "IL" |
-                                                               obl_data$state == "IN" |
-                                                               obl_data$state == "MI" |
-                                                               obl_data$state == "MN" |
-                                                               obl_data$state == "OH" |
-                                                               obl_data$state == "WI"),
-                                                            "Region V",
-                                                             ifelse((obl_data$state == "AR" |
-                                                                         obl_data$state == "LA" |
-                                                                         obl_data$state == "NM" |
-                                                                         obl_data$state == "OK" |
-                                                                         obl_data$state == "TX"),
-                                                                      "Region VI",
-                                                                       ifelse((obl_data$state == "IA" |
-                                                                                 obl_data$state == "KS" |
-                                                                                 obl_data$state == "MO" |
-                                                                                 obl_data$state == "NE"),
-                                                                              "Region VII",
-                                                                               ifelse((obl_data$state == "CO" |
-                                                                                         obl_data$state == "MT" |
-                                                                                         obl_data$state == "ND" |
-                                                                                         obl_data$state == "SD" |
-                                                                                         obl_data$state == "UT" |
-                                                                                         obl_data$state == "WY"),
-                                                                                      "Region VIII",
-                                                                                       ifelse((obl_data$state == "AZ" |
-                                                                                                 obl_data$state == "CA" |
-                                                                                                 obl_data$state == "HI" |
-                                                                                                 obl_data$state == "NV"),
-                                                                                              "Region IX",
-                                                                                               ifelse((obl_data$state == "AK" |
-                                                                                                         obl_data$state == "ID" |
-                                                                                                         obl_data$state == "OR" |
-                                                                                                         obl_data$state == "WA"),
-                                                                                                      "Region X",
-                                                                                                      NA
-                                                                                                      )
-                                                                                              )
-                                                                                      )
-                                                                              )
-                                                                      )
-                                                            )
-                                                      )
-                                              )
-                                     )
-                              )
+#specify all character variables as factors and clean variable names
+obl_data_1 <- obl_data_2 %>% 
+                janitor::clean_names() %>%
+                dplyr::mutate_if(is.character, factor)
 
-#drop state variable
-obl_data <- obl_data %>%
-              dplyr::select(-c(state))
-
-#add to "other" category for incident Types that are infrequent
-obl_data$incidentType[(obl_data$incidentType == "Chemical" |
-                        obl_data$incidentType == "Coastal Storm" |
-                        obl_data$incidentType == "Dam/Levee Break" |
-                        obl_data$incidentType == "Mud/Landslide" |
-                        obl_data$incidentType == "Volcano" |
-                        obl_data$incidentType == "Terrorist" |
-                        obl_data$incidentType == "Snow")] <- "Other"
-
-#remove Hurricane Maria outlier
-obl_data <-subset(obl_data, OblAmt< 4000000000)
-
+#remove outliers (rows that have a -log(oblamt))
+obl_data <- obl_data_1 %>%
+              dplyr::filter(log_obl_amt > 0)
+              
 #set random seed
 set.seed(123)
 
 #split dataset into 66.6% training, 33.3% testing
 #use incidentType as stratification
-obl_data_split <- rsample::initial_split(obl_data, prop = 2/3,
-                                     strata = incidentType)
+obl_data_split <- rsample::initial_split(obl_data, prop = 2/3)
 
 #create dataframes for the two sets:
 obl_train_data <- rsample::training(obl_data_split)
 obl_test_data <- rsample::testing(obl_data_split)
 
-#5-fold cross validation, repeated 5 times, stratified by incidentType
-obl_folds <- rsample::vfold_cv(obl_train_data,
-                               strata = incidentType,
-                               v = 5,
-                               repeats = 5)
+#5-fold spatial cross validation
+obl_folds_spatial <- spatialsample::spatial_clustering_cv(obl_train_data,
+                                                          coords = c(latitude, longitude),
+                                                          v = 5)
 
 #create recipe that codes categorical variables as dummy variables
-OA_rec <- recipes::recipe(OblAmt ~ ., data = obl_train_data) %>%
+OA_rec <- recipes::recipe(log_obl_amt ~ ., data = obl_train_data) %>%
+          recipes::step_unknown(state, new_level = "unknown state") %>%
           recipes::step_dummy(all_nominal_predictors())
 ```
 
@@ -250,8 +174,8 @@ obl_null_train_sum
 
 #RMSE for training data for formatting later
 obl_null_RMSE_train <- tibble::tibble(
-                          rmse = rmse_vec(truth = obl_train_data$OblAmt,
-                                              estimate = rep(mean(obl_train_data$OblAmt), nrow(obl_train_data))),
+                          rmse = rmse_vec(truth = obl_train_data$log_obl_amt,
+                                              estimate = rep(mean(obl_train_data$log_obl_amt), nrow(obl_train_data))),
                           SE = 0,
                           model = "Null - Train")
 
@@ -265,11 +189,12 @@ obl_null_test_sum
 
 #RMSE for testing data for formatting later
 obl_null_RMSE_test <- tibble::tibble(
-                          rmse = rmse_vec(truth = obl_test_data$OblAmt,
-                                              estimate = rep(mean(obl_test_data$OblAmt), nrow(obl_test_data))),
+                          rmse = rmse_vec(truth = obl_test_data$log_obl_amt,
+                                              estimate = rep(mean(obl_test_data$log_obl_amt), nrow(obl_test_data))),
                           SE = 0,
                           model = "Null - Test")
 ```
+
 
 ---
 
@@ -294,9 +219,8 @@ tree_mod <-
                          min_n = tune()) %>%
   parsnip::set_engine("rpart") %>%
   parsnip::set_mode("regression")
-
-#use the recipe specified earlier
 ```
+
 ---
 
 ### 2. Workflow Definition
@@ -328,7 +252,7 @@ tree_grid %>%
 ```{r}
 #tune the model with previously specified cross-validation and RMSE as target metric
 tree_res <- tree_wflow %>%
-                tune::tune_grid(resamples = obl_folds,
+                tune::tune_grid(resamples = obl_folds_spatial,
                                 grid = tree_grid,
                                 control = control_grid(verbose = TRUE),
                                 metrics = yardstick::metric_set(rmse))
@@ -341,7 +265,7 @@ DT_auto_plot <- tree_res %>% autoplot()
 DT_auto_plot
 
 #save file
-DT_auto_fig_file = here("results","DT-auto-plot-obl.png")
+DT_auto_fig_file = here("results","DT-auto-plot-OA-outlier.png")
 ggsave(filename = DT_auto_fig_file, plot = DT_auto_plot)
 
 #more detailed plot
@@ -351,14 +275,17 @@ DT_detail_plot <- tree_res %>%
                     ggplot2::ggplot(aes(cost_complexity, mean, color = tree_depth)) +
                              geom_line(size = 1.5, alpha = 0.6) +
                              geom_point(size = 2) +
-                             facet_wrap(~ .metric, scales = "free", nrow = 2) +
+                             facet_wrap(~ .metric, scales = "free") +
                              scale_x_log10(labels = scales::label_number()) +
-                             scale_color_viridis_d(option = "plasma", begin = 0.9, end = 0)
+                             scale_color_viridis_d(option = "plasma", begin = 0.9, end = 0) +
+                             labs(x = "cost complexity",
+                                  y = "mean",
+                                  color = "Tree Depth")
 DT_detail_plot
 
 #save file
-DT_detail_fig_file = here("results","DT-det-plot-obl.png")
-ggsave(filename = DT_detail_fig_file, plot = DT_detail_plot)
+DT_det_fig_file = here("results","DT-det-plot-OA-outlier.png")
+ggsave(filename = DT_det_fig_file, plot = DT_detail_plot)
 
 ```
 
@@ -386,59 +313,65 @@ best_tree_fit <- best_tree_wflow %>%
 ```{r}
 #plot the tree
 rpart.plot::rpart.plot(x = workflowsets::extract_fit_parsnip(best_tree_fit)$fit,
-                                         roundint = F,
-                                         type = 5,
-                                         digits = 5,
-                                         main = "Selected Decision Tree Model")
-#save file manually -- ggsave throws an error
+                                                     roundint = F,
+                                                     type = 5,
+                                                     digits = 5,
+                                                     main = "Selected Decision Tree Model",
+                                                     box.palette = viridis::viridis(10, option = "D", begin = 0.9, end = 0),
+                                                     shadow.col = "grey65",
+                                                     col = "grey99")
+#save manually as "DT-plot-OA-outlier.png" -- ggsave throws an error
 
 
 #find predictions and intervals
 tree_resid <- best_tree_fit %>%
                   broom.mixed::augment(new_data = obl_train_data) %>%
-                  dplyr::select(.pred, OblAmt) %>%
-                  dplyr::mutate(.resid = .pred - OblAmt)
+                  dplyr::select(.pred, log_obl_amt) %>%
+                  dplyr::mutate(.resid = .pred - log_obl_amt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline draws a 45 degree line, along which the results should fall
-DT_pred_act <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = OblAmt)) +
+DT_pred_act <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = log_obl_amt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
-                        geom_point() +
-                        labs(title = "Decision Tree Fit: Predicted vs. Actual Obligated Funds",
-                              x = "Predicted Obligated Funds ($)",
-                              y = "Actual Obligated Funds ($)")
+                        geom_point(color = "#3b528b") +
+                        scale_y_continuous(expand = c(0,0),
+                                           limits = c(-30, 25)) +
+                        scale_x_continuous(limits = c(0, 25)) +
+                        labs(title = "Decision Tree Fit: Predicted vs. Actual Log(Obligated Funds)",
+                              x = "Predicted Log(Obligated Funds) ($)",
+                              y = "Actual Log(Obligated Funds) ($)") 
 DT_pred_act
 
 #save file
-DT_pred_act_file = here("results","DT-pred-act-obl.png")
+DT_pred_act_file = here("results","DT-pred-act-OA-outlier.png")
 ggsave(filename = DT_pred_act_file, plot = DT_pred_act)
 
 #plot model with residuals
 #the geom_hline plots a straight horizontal line along which the results should fall
 DT_resid <- ggplot2::ggplot(tree_resid, aes(x = as.numeric(row.names(tree_resid)), y = .resid))+
                      geom_hline(yintercept = 0, color = "red", lty = 2) +
-                     geom_point() +
+                     geom_point(color = "#3b528b") +
                      labs(title = "Decision Tree Fit: Residuals",
                           x = "Observation Number",
                           y = "Residual")
 DT_resid
 
 #save file
-DT_resid_file = here("results","DT-resid-obl.png")
+DT_resid_file = here("results","DT-resid-OA-outlier.png")
 ggsave(filename = DT_resid_file, plot = DT_resid)
 
 #plot model fit vs residuals
 #the geom_hline plots a straight horizontal line along which the results fall
 DT_pred_resid <- ggplot2::ggplot(tree_resid, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
-                          geom_point() +
-                          labs(title = "Decision Tree Fit: Residuals vs Fitted Obligated Funds",
-                                x = "Predicted Obligated Funds ($)",
+                          geom_point(color = "#3b528b") +
+                          labs(title = "Decision Tree Fit: Residuals vs Fitted Log(Obligated Funds)",
+                                x = "Predicted Log(Obligated Funds) ($)",
                                 y = "Residual")
 DT_pred_resid
 
 #save file
-DT_pred_resid_file = here("results","DT-pred-resid-obl.png")
+DT_pred_resid_file = here("results","DT-pred-resid-OA-outlier.png")
 ggsave(filename = DT_pred_resid_file, plot = DT_pred_resid)
 
 #print model performance
@@ -464,6 +397,8 @@ tree_RMSE <- tree_res %>%
                dplyr::bind_rows(obl_null_RMSE_train)
 tree_RMSE
 ```
+
+The identified best performing tree model has some interesting results. It identifies percent of state counties awarded IH program, total number of agencies involved, total number of counties per state, percent of counties awarded PA program, FEMA Region VI, incident month of October and March as important predictors. It is interesting that incident type or declaration type are not included as significant. The RMSE does decrease from the null, which suggests the outlier removal was a necessary step. Let's explore the other models.
 
 <br>
 
@@ -524,7 +459,7 @@ RF_grid <- expand.grid(mtry = c(3, 4, 5, 6),
 ```{r}
 #tune the model with previously specified cross-validation and RMSE as target metric
 RF_res <- RF_wflow %>%
-              tune::tune_grid(resamples = obl_folds,
+              tune::tune_grid(resamples = obl_folds_spatial,
                               grid = RF_grid,
                               control = control_grid(verbose = TRUE, save_pred = TRUE),
                               metrics = metric_set(rmse))
@@ -539,7 +474,7 @@ RF_auto_plot <- RF_res %>% autoplot()
 RF_auto_plot
 
 #save file
-RF_auto_fig_file = here("results","RF-auto-plot-obl.png")
+RF_auto_fig_file = here("results","RF-auto-plot-OA-outlier.png")
 ggsave(filename = RF_auto_fig_file, plot = RF_auto_plot)
 ```
 
@@ -561,6 +496,7 @@ best_RF_fit <- best_RF_wflow %>%
                     parsnip::fit(data = obl_train_data)
 ```
 
+
 ---
 
 ### 6. Model evaluation
@@ -569,56 +505,63 @@ best_RF_fit <- best_RF_wflow %>%
 x_RF <- best_RF_fit$fit$fit$fit
 
 #plot most important predictors in the model
-RF_plot <- vip::vip(x_RF, num_features = 20)
+RF_plot <- vip::vip(x_RF, 
+                    num_features = 20,
+                    aesthetics = list(fill = viridis::viridis(20, option = "D", begin = 0.9, end = 0)))
 RF_plot
 
-#save  manually - ggsave throws an error
+#save manually as "RF-plot-OA-outlier.png" -- ggsave throws errors
 
 #find predictions and intervals
 RF_resid <- best_RF_fit %>%
                 broom.mixed::augment(new_data = obl_train_data) %>%
-                dplyr::select(.pred, OblAmt) %>%
-                dplyr::mutate(.resid = .pred - OblAmt)
+                dplyr::select(.pred, log_obl_amt) %>%
+                dplyr::mutate(.resid = .pred - log_obl_amt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline is a 45 degree line, along which the results should fall
-RF_pred_act <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = OblAmt)) +
+RF_pred_act <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = log_obl_amt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) +
-                        geom_point() +
-                        labs(title = "RF Fit: Actual vs. Predicted Obligated Funds",
-                              x = "Predicted Obligated Funds ($)",
-                              y = "Actual Obligated Funds ($)")
+                        geom_point(color = "#3b528b") +
+                        scale_y_continuous(expand = c(0,0),
+                                           limits = c(-30, 25)) +
+                        scale_x_continuous(limits = c(0, 25)) +
+                        labs(title = "RF Fit: Actual vs. Predicted Log(Obligated Funds)",
+                              x = "Predicted Log(Obligated Funds) ($)",
+                              y = "Actual Log(Obligated Funds) ($)")
+RF_pred_act
 
 #save file
-RF_pred_act_file = here("results","RF-pred-act-obl.png")
+RF_pred_act_file = here("results","RF-pred-act-OA-outlier.png")
 ggsave(filename = RF_pred_act_file, plot = RF_pred_act)
 
 #plot model with residuals
 #the geom_hline plots a straight horizontal line along which the results should fall
 RF_resids <- ggplot2::ggplot(RF_resid, aes(x = as.numeric(row.names(RF_resid)), y = .resid))+
                             geom_hline(yintercept = 0, color = "red", lty = 2) +
-                            geom_point() +
+                            geom_point(color = "#3b528b") +
                             labs(title = "RF Fit: Residuals",
                                   x = "Observation Number",
                                   y = "Residual")
 RF_resids
 
 #save file
-RF_resid_file = here("results","RF-resid-obl.png")
+RF_resid_file = here("results","RF-resid-OA-outlier.png")
 ggsave(filename = RF_resid_file, plot = RF_resids)
+
 
 #plot model fit vs residuals
 #the geom_hline plots a straight horizontal line along which the results fall
 RF_pred_resid <- ggplot2::ggplot(RF_resid, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
-                          geom_point() +
-                          labs(title = "Random Forest Fit: Residuals vs Fitted Obligated Funds",
-                                x = "Fitted Requested Funds ($)",
+                          geom_point(color = "#3b528b") +
+                          labs(title = "Random Forest Fit: Residuals vs Fitted Log(Obligated Funds)",
+                                x = "Fitted Log(Obligated Funds) ($)",
                                 y = "Residual")
 RF_pred_resid
 
 #save file
-RF_pred_resid_file = here("results","RF-pred-resid-obl.png")
+RF_pred_resid_file = here("results","RF-pred-resid-OA-outlier.png")
 ggsave(filename = RF_pred_resid_file, plot = RF_pred_resid)
 
 #print the 10 best performing hyperparameter sets
@@ -641,9 +584,11 @@ RF_RMSE <- RF_res %>%
 RF_RMSE
 ```
 
+In examining the results of the RF model within the context of RMSE, it performs marginally better than the decision tree. It identifies percent of counties awarded IH program, total number of federal agencies involved, percent of counties awarded HM program, average FEMA cost share, and whether or not the IH program was awarded to any county in the state as the five most important predictors. Let's try another model to see if we can find an improvement in the RMSE.
+
 ---
 
-## Bagged Decision Tree Model
+## Elastic Net Model
 
 <br>
 
@@ -657,35 +602,21 @@ cl <- makeCluster(cores)
 
 registerDoParallel(cl)
 
-#start over with data split to allow for bootstrapping
-#set random seed
-set.seed(20140102)
-
-#use bootstrap instead of CV
-obl_data_bootsplit <- obl_train_data %>%
-                        rsample::bootstraps(times = 10,
-                                            strata = "incidentType")
-
-#define model
-bag_tree_mod <- baguette::bag_tree(cost_complexity = tune(),
-                                   tree_depth = tune(),
-                                   min_n = tune()) %>%
-                parsnip::set_engine("rpart",
-                                    times = 10) %>%
-                parsnip::set_mode("regression")
-
-#create recipe that codes categorical variables as dummy variables
-BT_rec <- recipes::recipe(OblAmt ~ ., data = obl_train_data) %>%
-          step_string2factor(all_nominal())
+#define the elastic net model
+elastic_mod <- linear_reg(mode = "regression",
+                           penalty = tune(),
+                           mixture = tune()) %>%
+                parsnip::set_engine("glmnet")
 ```
+
 ---
 
 ### 2. Workflow Definition
 ```{r}
-#define workflow for tree
-BT_wflow <- workflows::workflow() %>%
-               workflows::add_model(bag_tree_mod) %>%
-               workflows::add_recipe(BT_rec)
+#define elastic net workflow
+elastic_wflow <- workflows::workflow() %>%
+                 workflows::add_model(elastic_mod) %>%
+                 workflows::add_recipe(OA_rec)
 ```
 
 ---
@@ -693,10 +624,9 @@ BT_wflow <- workflows::workflow() %>%
 ### 3. Tuning Grid Specification
 ```{r}
 #tuning grid specification
-tree_grid <- dials::grid_regular(cost_complexity(),
-                                 tree_depth(),
-                                 min_n(),
-                                 levels = 5)
+EN_grid <- dials::grid_regular(penalty(),
+                               mixture(),
+                               levels = 50)
 ```
 
 ---
@@ -704,238 +634,393 @@ tree_grid <- dials::grid_regular(cost_complexity(),
 ### 4. Tuning Using Cross-Validation and the `tune_grid()` function
 ```{r}
 #tune the model with previously specified cross-validation and RMSE as target metric
-BT_res <- BT_wflow %>%
-          tune::tune_grid(resamples = obl_data_bootsplit,
-                          grid = tree_grid,
-                          metrics = metric_set(rmse),
-                          control = control_resamples(save_pred = TRUE,
-                                                      extract = function(x) extract_model(x)))
+EN_res <- elastic_wflow %>%
+              tune::tune_grid(resamples = obl_folds_spatial,
+                              grid = EN_grid,
+                              control = control_grid(verbose = TRUE, save_pred = TRUE),
+                              metrics = metric_set(rmse))
 
-
-#collect metrics
-BT_res %>% workflowsets::collect_metrics()
+#look at top 5 EN models
+top_EN_models <- EN_res %>%
+                    tune::show_best("rmse", n = 5)
+top_EN_models
 
 #default visualization
-BT_auto_plot <- BT_res %>% autoplot()
-BT_auto_plot
+EN_auto_plot <- EN_res %>% autoplot()
+EN_auto_plot
 
 #save file
-BT_auto_fig_file = here("results","BT-auto-plot-obl.png")
-ggsave(filename = BT_auto_fig_file, plot = BT_auto_plot)
-
-#more detailed plot
-BT_det_plot <- BT_res %>%
-                    workflowsets::collect_metrics() %>%
-                    dplyr::mutate(tree_depth = factor(tree_depth)) %>%
-                    ggplot2::ggplot(aes(cost_complexity, mean, color = tree_depth)) +
-                             geom_line(size = 1.5, alpha = 0.6) +
-                             geom_point(size = 2) +
-                             facet_wrap(~ .metric, scales = "free", nrow = 2) +
-                             scale_x_log10(labels = scales::label_number()) +
-                             scale_color_viridis_d(option = "plasma", begin = 0.9, end = 0)
-BT_det_plot
-
-#save file
-BT_det_fig_file = here("results","BT-det-plot-obl.png")
-ggsave(filename = BT_det_fig_file, plot = BT_det_plot)
+EN_auto_fig_file = here("results","EN-auto-plot-OA-outlier.png")
+ggsave(filename = EN_auto_fig_file, plot = EN_auto_plot)
 ```
+
 
 ---
 
 ### 5. Identify Best Model
 ```{r}
-#select the BT model with the lowest rmse
-BT_lowest_rmse <- BT_res %>%
-                        tune::select_best("rmse")
+#select the EN model with the lowest rmse
+EN_lowest_rmse <- EN_res %>%
+                      tune::select_best("rmse")
 
-#finalize the workflow by using the selected BT model
-best_BT_wflow <- BT_wflow %>%
-                      tune::finalize_workflow(BT_lowest_rmse)
-best_BT_wflow
+#finalize the workflow by using the selected RF model
+best_EN_wflow <- elastic_wflow %>%
+                      tune::finalize_workflow(EN_lowest_rmse)
+best_EN_wflow
 
 #one last fit on the training data
-best_BT_fit <- best_BT_wflow %>%
+best_EN_fit <- best_EN_wflow %>%
                     parsnip::fit(data = obl_train_data)
 ```
+
 
 ---
 
 ### 6. Model evaluation
 ```{r}
 #extract model from final fit
-x_BT <- best_BT_fit$fit$fit$fit
+x_EN <- best_EN_fit$fit$fit$fit
 
-#bag roots function to extract fit
-bag_roots <-  function(x){
-  x %>% 
-    dplyr::select(.extracts) %>% 
-    unnest(cols = c(.extracts)) %>% 
-    dplyr::mutate(models = map(.extracts,
-                               ~.x$model_df)) %>% 
-    dplyr::select(-.extracts) %>% 
-    unnest(cols = c(models)) %>% 
-    mutate(root = map_chr(model,
-                          ~as.character(.x$fit$frame[1, 1]))) %>%
-    dplyr::select(root)  
-}
+#plot most important predictors in the model
+EN_plot <- vip::vip(x_EN, 
+                    num_features = 20,
+                    aesthetics = list(fill = viridis::viridis(20, option = "D", begin = 0.9, end = 0)))
+EN_plot
 
-#plot most important variables
-BT_IV <- bag_roots(BT_res) %>% 
-            ggplot(mapping = aes(x = fct_rev(fct_infreq(root)))) + 
-            geom_bar() + 
-            coord_flip() + 
-            labs(x = "root", y = "count")
-BT_IV
-
-#save file
-BT_IV_file = here("results","BT-IV-obl-outlier.png")
-ggsave(filename = BT_IV_file, plot = BT_IV)
+#save manually as "EN-plot-OA-outlier.png" -- ggsave throws errors
 
 #find predictions and intervals
-BT_resid <- best_BT_fit %>%
-                  broom.mixed::augment(new_data = obl_train_data) %>%
-                  dplyr::select(.pred, OblAmt) %>%
-                  dplyr::mutate(.resid = .pred - OblAmt)
+EN_resid <- best_EN_fit %>%
+                broom.mixed::augment(new_data = obl_train_data) %>%
+                dplyr::select(.pred, log_obl_amt) %>%
+                dplyr::mutate(.resid = .pred - log_obl_amt)
 
 #plot model predictions from tuned model versus actual outcomes
-#geom_abline draws a 45 degree line, along which the results should fall
-BT_pred_act <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = OblAmt)) +
-                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
-                        geom_point() +
-                        labs(title = "Bagged Tree Fit: Predicted vs. Actual Obligated Funds",
-                              x = "Predicted Obligated Funds ($)",
-                              y = "Actual Obligated Funds ($)")
-BT_pred_act
+#geom_abline is a 45 degree line, along which the results should fall
+EN_pred_act <- ggplot2::ggplot(EN_resid, aes(x = .pred, y = log_obl_amt)) +
+                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) +
+                        geom_point(color = "#3b528b") +
+                        scale_y_continuous(expand = c(0,0),
+                                           limits = c(-30, 25)) +
+                        scale_x_continuous(limits = c(0, 25)) +
+                        labs(title = "EN Fit: Actual vs. Predicted Log(Obligated Funds)",
+                              x = "Predicted Log(Obligated Funds) ($)",
+                              y = "Actual Log(Obligated Funds) ($)")
+EN_pred_act
 
 #save file
-BT_pred_act_file = here("results","BT-pred-act-obl.png")
-ggsave(filename = BT_pred_act_file, plot = BT_pred_act)
+EN_pred_act_file = here("results","EN-pred-act-OA-outlier.png")
+ggsave(filename = EN_pred_act_file, plot = EN_pred_act)
 
 #plot model with residuals
 #the geom_hline plots a straight horizontal line along which the results should fall
-BT_resids <- ggplot2::ggplot(BT_resid, aes(x = as.numeric(row.names(BT_resid)), y = .resid))+
-                      geom_hline(yintercept = 0, color = "red", lty = 2) +
-                      geom_point() +
-                      labs(title = "Bagged Tree Fit: Residuals",
-                            x = "Observation Number",
-                            y = "Residual")
-BT_resids
+EN_resids <- ggplot2::ggplot(EN_resid, aes(x = as.numeric(row.names(EN_resid)), y = .resid))+
+                            geom_hline(yintercept = 0, color = "red", lty = 2) +
+                            geom_point(color = "#3b528b") +
+                            labs(title = "EN Fit: Residuals",
+                                  x = "Observation Number",
+                                  y = "Residual")
+EN_resids
 
 #save file
-BT_resid_file = here("results","BT-resids-obl.png")
-ggsave(filename = BT_resid_file, plot = BT_resids)
+EN_resid_file = here("results","EN-resid-OA-outlier.png")
+ggsave(filename = EN_resid_file, plot = EN_resids)
+
 
 #plot model fit vs residuals
 #the geom_hline plots a straight horizontal line along which the results fall
-BT_pred_resid <- ggplot2::ggplot(BT_resid, aes(x = .pred, y = .resid))+
+EN_pred_resid <- ggplot2::ggplot(EN_resid, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
-                          geom_point() +
-                          labs(title = "Bagged Tree Fit: Residuals vs Fitted Obligated Funds",
-                                x = "Predicted Obligated Funds ($)",
+                          geom_point(color = "#3b528b") +
+                          labs(title = "EN Fit: Residuals vs Fitted Log(Obligated Funds)",
+                                x = "Fitted Log(Obligated Funds) ($)",
                                 y = "Residual")
-BT_pred_resid
+EN_pred_resid
 
 #save file
-BT_pred_resid_file = here("results","BT-pred-resid-obl.png")
-ggsave(filename = BT_pred_resid_file, plot = BT_pred_resid)
+EN_pred_resid_file = here("results","EN-pred-resid-OA-outlier.png")
+ggsave(filename = EN_pred_resid_file, plot = EN_pred_resid)
 
-#print model performance
-#print 10 best performing hyperparameter sets
-BT_res %>%
+#print the 10 best performing hyperparameter sets
+EN_res %>%
   tune::show_best(n = 10) %>%
-  dplyr::select(rmse = mean, std_err, cost_complexity) %>%
-  dplyr::mutate(rmse = round(rmse, 3),
-                std_err = round(std_err, 4),
-                cost_complexity = scales::scientific(cost_complexity))
+  dplyr::select(rmse = mean, std_err)
 
-#print the best model performance
-BT_performance <- BT_res %>% tune::show_best(n = 1)
-print(BT_performance)
+#print the best model
+EN_performance <- EN_res %>% tune::show_best(n = 1)
+EN_performance
 
-#compare model performance to null model
-BT_RMSE <- BT_res %>%
-                tune::show_best(n = 1) %>%
-                dplyr::transmute(
-                  rmse = round(mean, 3),
-                  SE = round(std_err, 4),
-                  model = "Bagged Tree") %>%
-               dplyr::bind_rows(RF_RMSE)
-BT_RMSE
+#compare model performance to null model (and other models)
+EN_RMSE <- EN_res %>%
+              tune::show_best(n = 1) %>%
+              dplyr::transmute(
+                rmse = round(mean, 3),
+                SE = round(std_err, 4),
+                model = "EN") %>%
+             dplyr::bind_rows(RF_RMSE)
+EN_RMSE
+```
+The Elastic Net model places great emphasis on Maine being the state receving the declaration. The next closest predictors include average FEMA cost share, Vermont, Montana, and Idaho. The EN model has an improved RMSE from the DT model but not the RF model. Let's try LASSO just to round out the analysis.
 
-#save combined table
-model_comp_file = here("results", "ML-model-comp-obl.Rds")
-saveRDS(BT_RMSE, file = model_comp_file)
+---
+
+
+## LASSO Model
+
+<br>
+
+### 1. Model Specification
+```{r}
+#run parallels to determine number of cores
+cores <- parallel::detectCores() - 1
+cores
+
+cl <- makeCluster(cores)
+
+registerDoParallel(cl)
+
+#define the LASSO model
+#mixture = 1 identifies the model to be a LASSO model
+lasso_mod <- linear_reg(mode = "regression",
+                           penalty = tune(),
+                           mixture = 1) %>%
+                parsnip::set_engine("glmnet")
 ```
 
-In examining the models, the Bagged Tree has the best RMSE, but it also has a higher SE than the other models. We will still choose the bagged tree as our model on which to evaluate the test data.
+---
 
---
+### 2. Workflow Definition
+```{r}
+#define lasso workflow
+lasso_wflow <- workflows::workflow() %>%
+                 workflows::add_model(lasso_mod) %>%
+                 workflows::add_recipe(OA_rec)
+```
+
+---
+
+### 3. Tuning Grid Specification
+```{r}
+#tuning grid specification
+lasso_grid <- tibble(penalty = 10^seq(-3, 0, length.out = 30))
+
+#5 lowest penalty values
+lasso_grid %>%
+  dplyr::top_n(-5)
+
+#5 highest penalty values
+lasso_grid %>%
+  dplyr::top_n(5)
+```
+
+---
+
+### 4. Tuning Using Cross-Validation and the `tune_grid()` function
+```{r}
+#tune the model with previously specified cross-validation and RMSE as target metric
+lasso_res <- lasso_wflow %>%
+              tune::tune_grid(resamples = obl_folds_spatial,
+                              grid = lasso_grid,
+                              control = control_grid(verbose = TRUE, save_pred = TRUE),
+                              metrics = metric_set(rmse))
+
+#look at top 5 EN models
+top_lasso_models <- lasso_res %>%
+                        tune::show_best("rmse", n = 5)
+top_lasso_models
+
+#default visualization
+lasso_auto_plot <- lasso_res %>% autoplot()
+lasso_auto_plot
+
+#save file
+lasso_auto_fig_file = here("results","lasso-auto-plot-OA-outlier.png")
+ggsave(filename = lasso_auto_fig_file, plot = lasso_auto_plot)
+```
+
+
+---
+
+### 5. Identify Best Model
+```{r}
+#select the LASSO model with the lowest rmse
+lasso_lowest_rmse <- lasso_res %>%
+                        tune::select_best("rmse")
+
+#finalize the workflow by using the selected lasso model
+best_lasso_wflow <- lasso_wflow %>%
+                      tune::finalize_workflow(lasso_lowest_rmse)
+best_lasso_wflow
+
+#one last fit on the training data
+best_lasso_fit <- best_lasso_wflow %>%
+                    parsnip::fit(data = obl_train_data)
+```
+
+
+---
+
+### 6. Model evaluation
+```{r}
+#extract model from final fit
+x_lasso <- best_lasso_fit$fit$fit$fit
+
+#plot most important predictors in the model
+lasso_plot <- vip::vip(x_lasso, 
+                    num_features = 20,
+                    aesthetics = list(fill = viridis::viridis(20, option = "D", begin = 0.9, end = 0)))
+lasso_plot
+
+#save manually as "LASSO-plot-OA-outlier.png" -- ggsave throws errors
+
+#find predictions and intervals
+lasso_resid <- best_lasso_fit %>%
+                broom.mixed::augment(new_data = obl_train_data) %>%
+                dplyr::select(.pred, log_obl_amt) %>%
+                dplyr::mutate(.resid = .pred - log_obl_amt)
+
+#plot model predictions from tuned model versus actual outcomes
+#geom_abline is a 45 degree line, along which the results should fall
+lasso_pred_act <- ggplot2::ggplot(lasso_resid, aes(x = .pred, y = log_obl_amt)) +
+                        geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) +
+                        geom_point(color = "#3b528b") +
+                        scale_y_continuous(expand = c(0,0),
+                                           limits = c(-30, 25)) +
+                        scale_x_continuous(limits = c(0, 25)) +
+                        labs(title = "LASSO Fit: Actual vs. Predicted Log(Obligated Funds)",
+                              x = "Predicted Log(Obligated Funds) ($)",
+                              y = "Actual Log(Obligated Funds) ($)")
+lasso_pred_act
+
+#save file
+lasso_pred_act_file = here("results","lasso-pred-act-OA-outlier.png")
+ggsave(filename = lasso_pred_act_file, plot = lasso_pred_act)
+
+#plot model with residuals
+#the geom_hline plots a straight horizontal line along which the results should fall
+lasso_resids <- ggplot2::ggplot(lasso_resid, aes(x = as.numeric(row.names(lasso_resid)), y = .resid))+
+                                geom_hline(yintercept = 0, color = "red", lty = 2) +
+                                geom_point(color = "#3b528b") +
+                                labs(title = "LASSO Fit: Residuals",
+                                      x = "Observation Number",
+                                      y = "Residual")
+lasso_resids
+
+#save file
+lasso_resid_file = here("results","lasso-resid-OA-outlier.png")
+ggsave(filename = lasso_resid_file, plot = lasso_resids)
+
+
+#plot model fit vs residuals
+#the geom_hline plots a straight horizontal line along which the results fall
+lasso_pred_resid <- ggplot2::ggplot(lasso_resid, aes(x = .pred, y = .resid))+
+                                    geom_hline(yintercept = 0, color = "red", lty = 2) +
+                                    geom_point(color = "#3b528b") +
+                                    labs(title = "LASSO Fit: Residuals vs Fitted Log(Obligated Funds)",
+                                          x = "Fitted Log(Obligated Funds) ($)",
+                                          y = "Residual")
+lasso_pred_resid
+
+#save file
+lasso_pred_resid_file = here("results","lasso-pred-resid-OA-outlier.png")
+ggsave(filename = lasso_pred_resid_file, plot = lasso_pred_resid)
+
+#print the 10 best performing hyperparameter sets
+lasso_res %>%
+  tune::show_best(n = 10) %>%
+  dplyr::select(rmse = mean, std_err)
+
+#print the best model
+lasso_performance <- lasso_res %>% tune::show_best(n = 1)
+lasso_performance
+
+#compare model performance to null model (and other models)
+lasso_RMSE <- lasso_res %>%
+              tune::show_best(n = 1) %>%
+              dplyr::transmute(
+                rmse = round(mean, 3),
+                SE = round(std_err, 4),
+                model = "LASSO") %>%
+             dplyr::bind_rows(EN_RMSE)
+lasso_RMSE
+
+#save combined table
+model_comp_file = here("results", "ML-model-comp-OA-outlier.Rds")
+saveRDS(lasso_RMSE, file = model_comp_file)
+```
+The LASSO model fit is almost identical to the Elastic Net model fit.
+
+---
 
 ## Model Selection and Evaluation
-Using the bagged tree model
+Based on the results of the model comparison table, all of the models have a similar fit. However, RF has the lowest RMSE, so we will fit that to the test data.
 ```{r}
 #fit model to training set but evaluate on the test data
-BT_fit_test <- best_BT_wflow %>%
+RF_fit_test <- best_RF_wflow %>%
                     tune::last_fit(split = obl_data_split)
 
 #compare test performance against training performance
-BT_rmse_test <- collect_metrics(BT_fit_test) %>%
-  dplyr::select(rmse = .estimate) %>%
-  dplyr::mutate(data = "test")
+RF_rmse_test <- collect_metrics(RF_fit_test) %>%
+                   dplyr::select(rmse = .estimate) %>%
+                   dplyr::mutate(data = "test")
 
-BT_comp <- BT_RMSE %>%
-                  dplyr::filter(model == "Bagged Tree") %>%
+test_comp <- RF_RMSE %>%
+                  dplyr::filter(model == "Random Forest") %>%
                   dplyr::transmute(rmse, data = "train") %>%
-                  dplyr::bind_rows(BT_rmse_test) %>%
+                  dplyr::bind_rows(RF_rmse_test) %>%
                   dplyr::slice(-3) #don't know why the third row shows up
-BT_comp
-#RMSEs are incredibly different...
+test_comp
+#RMSEs are very different (but lower in test data?) 
+
+#save combined table
+test_comp_file = here("results", "test-train-model-comp-OA-outlier.Rds")
+saveRDS(test_comp, file = test_comp_file)
 
 #find predictions and intervals
-BT_resid_fit <- BT_fit_test %>%
-                  broom.mixed::augment() %>%
-                  dplyr::select(.pred, OblAmt) %>%
-                  dplyr::mutate(.resid = .pred - OblAmt)
+RF_resid_fit <- RF_fit_test %>%
+                      broom.mixed::augment() %>%
+                      dplyr::select(.pred, log_obl_amt) %>%
+                      dplyr::mutate(.resid = .pred - log_obl_amt)
 
 #plot model predictions from tuned model versus actual outcomes
 #geom_abline draws a 45 degree line, along which the results should fall
-BT_pred_act_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = OblAmt)) +
+RF_pred_act_test <- ggplot2::ggplot(RF_resid_fit, aes(x = .pred, y = log_obl_amt)) +
                         geom_abline(slope = 1, intercept = 0, color = "red", lty = 2) + 
-                        geom_point() +
-                        labs(title = "Bagged Tree Test Fit: Predicted vs. Actual Obligated Funds",
-                              x = "Predicted Obligated Funds ($)",
-                              y = "Actual Obligated Funds ($)")
-BT_pred_act_test
+                        geom_point(color = "#3b528b") +
+                        labs(title = "RF Test Fit: Predicted vs. Actual Log(Obligated Funds)",
+                              x = "Predicted Log(Obligated Funds) ($)",
+                              y = "Actual Log(Obligated Funds) ($)")
+RF_pred_act_test
 
 #save file
-BT_pred_act_test_file = here("results","BT-pred-act-test-obl.png")
-ggsave(filename = BT_pred_act_test_file, plot = BT_pred_act_test)
+RF_pred_act_test_file = here("results","RF-pred-act-test-OA-outlier.png")
+ggsave(filename = RF_pred_act_test_file, plot = RF_pred_act_test)
 
 #plot model with residuals
 #the geom_hline plots a straight horizontal line along which the results should fall
-BT_resids_test <- ggplot2::ggplot(BT_resid_fit, aes(x = as.numeric(row.names(BT_resid_fit)), y = .resid))+
+RF_resids_test <- ggplot2::ggplot(RF_resid_fit, aes(x = as.numeric(row.names(RF_resid_fit)), y = .resid))+
                       geom_hline(yintercept = 0, color = "red", lty = 2) +
-                      geom_point() +
-                      labs(title = "Bagged Tree Test Fit: Residuals",
+                      geom_point(color = "#3b528b") +
+                      labs(title = "RF Test Fit: Residuals",
                             x = "Observation Number",
                             y = "Residual")
-BT_resids_test
+RF_resids_test
 
 #save file
-BT_resid_test_file = here("results","BT-resid-test-obl.png")
-ggsave(filename = BT_resid_test_file, plot = BT_resids_test)
+RF_resid_test_file = here("results","RF-resid-test-OA-outlier.png")
+ggsave(filename = RF_resid_test_file, plot = RF_resids_test)
 
 #plot model fit vs residuals
 #the geom_hline plots a straight horizontal line along which the results fall
-BT_pred_resid_test <- ggplot2::ggplot(BT_resid_fit, aes(x = .pred, y = .resid))+
+RF_pred_resid_test <- ggplot2::ggplot(RF_resid_fit, aes(x = .pred, y = .resid))+
                           geom_hline(yintercept = 0, color = "red", lty = 2) +
-                          geom_point() +
-                          labs(title = "Bagged Tree Test Fit: Residuals vs Fitted Obligated Funds",
-                                x = "Predicted Obligated Funds ($)",
-                                y = "Residual")
-BT_pred_resid_test
+                          geom_point(color = "#3b528b") +
+                          labs(title = "RF Test Fit: Residuals vs Fitted Log(Obligated Funds)",
+                                x = "Predicted Log(Requested Funds) ($)",
+                                y = "Residuals")
+RF_pred_resid_test
 
 #save file
-BT_pred_resid_test_file = here("results","BT-pred-resid-test-obl.png")
-ggsave(filename = BT_pred_resid_test_file, plot = BT_pred_resid_test)
+RF_pred_resid_test_file = here("results","RF-pred-resid-test-OA-outlier.png")
+ggsave(filename = RF_pred_resid_test_file, plot = RF_pred_resid_test)
 ```
