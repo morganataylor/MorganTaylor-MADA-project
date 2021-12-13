@@ -18,6 +18,7 @@ This analysis examines the predictors of allocation of FEMA funds during disaste
 * The two outcomes of interest are Requested Amount (`ReqAmt`) and Obligated Amount (`OblAmt`).
 * The primary predictor of interest is Incident Duration (`IncidentDuration`)
 * Whichever outcome is not currently fitted to the model will *not* be considered a predictor of interest
+* The outcomes of interest are log-transformed
 
 
 <br>
@@ -57,11 +58,17 @@ options(scipen=999)
 ## Load Processed Data
 Load the data generated from the markdowns in the `processing_code` folder.
 ```{r load data}
-#define file path
-data_location <- here::here("data", "processed_data", "analysisdata.rds")
+#define file path to req data
+data_location_req <- here::here("data", "processed_data", "analysisdata-RA.rds")
 
-#load data
-analysis_data <- readRDS(data_location)
+#load req data
+analysis_data_req <- readRDS(data_location_req)
+
+#define file path to obl data
+data_location_obl <- here::here("data", "processed_data", "analysisdata-OA.rds")
+
+#load obl data
+analysis_data_obl <- readRDS(data_location_obl)
 ```
 
 ---
@@ -69,7 +76,9 @@ analysis_data <- readRDS(data_location)
 ## Data Overview
 To better understand the data, let's use `summarytools` to better visualize the data.
 ```{r data overview}
-skimr::skim(analysis_data)
+skimr::skim(analysis_data_req)
+
+skimr::skim(analysis_data_obl)
 ```
 
 ---
@@ -93,15 +102,19 @@ We first need to address the NA values, and then we will make two datasets with 
 * FEMACSAvg
 
 ```{r data subsets}
-#obligated amount
-obl_data <- analysis_data %>%
-              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
-                            Population, Counties, TotalAgencies, FEMACSAvg, OblAmt)
+#log transform ReqAmt
+analysis_data_req$logReqAmt <- log(analysis_data_req$ReqAmt)
 
-#requested amount
-req_data <- analysis_data %>%
-              dplyr::select(state, IncidentYear, IncidentMonth, declarationType, incidentType, IncidentDuration, ResponseDays, IH, PA, HM,
-                            Population, Counties, TotalAgencies, FEMACSAvg, ReqAmt)
+#drop unnecessary variables
+req_data <- analysis_data_req %>%
+              dplyr::select(-c(ReqAmt, disasterNumber, declarationTitle))
+
+#log transform OblAmt
+analysis_data_obl$logOblAmt <- log(analysis_data_obl$OblAmt)
+
+#drop unnecessary variables
+obl_data <- analysis_data_obl %>%
+              dplyr::select(-c(OblAmt, disasterNumber, declarationTitle))
 ```
 
 ---
@@ -135,7 +148,7 @@ lr_mod <- parsnip::linear_reg() %>%
           parsnip::set_engine("lm")
 
 #define recipe
-req_SLR_rec <- recipes::recipe(ReqAmt ~ IncidentDuration, data = req_train_data)
+req_SLR_rec <- recipes::recipe(logReqAmt ~ IncidentDuration, data = req_train_data)
 
 #define SLR workflow
 req_SLR_wflow <- workflows::workflow() %>%
@@ -191,9 +204,9 @@ Assess goodness of fit measures.
 modelsummary::glance(req_SLR_fit)
 
 #using the prediction capacity
-req_SLR_train %>% yardstick::metrics(truth = ReqAmt, estimate = .pred)
+req_SLR_train %>% yardstick::metrics(truth = logReqAmt, estimate = .pred)
 ```
-This is a terrible model. Time to try adding more predictors.
+This isn't a great model. Time to try adding more predictors.
 
 ---
 
@@ -205,7 +218,7 @@ lr_mod <- linear_reg() %>%
               set_engine("lm")
 
 #define recipe
-req_MVR_rec <- recipes::recipe(ReqAmt ~ ., data = req_train_data)
+req_MVR_rec <- recipes::recipe(logReqAmt ~ ., data = req_train_data)
 
 #define SLR workflow
 req_MVR_wflow <- workflows::workflow() %>%
@@ -277,7 +290,7 @@ Assess goodness of fit measures.
 modelsummary::glance(req_MVR_fit)
 
 #using the prediction capacity
-req_MVR_train %>% yardstick::metrics(truth = ReqAmt, estimate = .pred)
+req_MVR_train %>% yardstick::metrics(truth = logReqAmt, estimate = .pred)
 ```
 While this is an improvement, it's still not a great model. Let's compare the two side-by-side using RMSE.
 
@@ -293,7 +306,7 @@ req_lm_preds <- bind_rows(req_MVR_train,
 #Use the yardstick package to calculate the metrics on resamples
 req_lm_metrics <- req_lm_preds %>%
                       dplyr::group_by(data, model) %>%
-                      yardstick::metrics(truth = ReqAmt, estimate = .pred)
+                      yardstick::metrics(truth = logReqAmt, estimate = .pred)
 
 #for interpretation: rmse = Root Mean Squared Error (RMSE), rsq = R^2, mae = Mean Absolute Error (MAE)
 #make a df that displays RMSE and R^2 for each model and data (all dplyr functions)
@@ -338,7 +351,7 @@ lr_mod <- parsnip::linear_reg() %>%
           parsnip::set_engine("lm")
 
 #define recipe
-obl_SLR_rec <- recipes::recipe(OblAmt ~ IncidentDuration, data = obl_train_data)
+obl_SLR_rec <- recipes::recipe(logOblAmt ~ IncidentDuration, data = obl_train_data)
 
 #define SLR workflow
 obl_SLR_wflow <- workflows::workflow() %>%
@@ -394,9 +407,9 @@ Assess goodness of fit measures.
 modelsummary::glance(obl_SLR_fit)
 
 #using the prediction capacity
-obl_SLR_train %>% yardstick::metrics(truth = OblAmt, estimate = .pred)
+obl_SLR_train %>% yardstick::metrics(truth = logOblAmt, estimate = .pred)
 ```
-This is a terrible model. Time to try adding more predictors.
+This isn't a great model. Time to try adding more predictors.
 
 ---
 
@@ -408,7 +421,7 @@ lr_mod <- linear_reg() %>%
               set_engine("lm")
 
 #define recipe
-obl_MVR_rec <- recipes::recipe(OblAmt ~ ., data = obl_train_data)
+obl_MVR_rec <- recipes::recipe(logOblAmt ~ ., data = obl_train_data)
 
 #define SLR workflow
 obl_MVR_wflow <- workflows::workflow() %>%
@@ -480,7 +493,7 @@ Assess goodness of fit measures.
 modelsummary::glance(obl_MVR_fit)
 
 #using the prediction capacity
-obl_MVR_train %>% yardstick::metrics(truth = OblAmt, estimate = .pred)
+obl_MVR_train %>% yardstick::metrics(truth = logOblAmt, estimate = .pred)
 ```
 While this is an improvement, it's still not a great model. Let's compare the two side-by-side using RMSE.
 
@@ -496,7 +509,7 @@ obl_lm_preds <- bind_rows(obl_MVR_train,
 #Use the yardstick package to calculate the metrics on resamples
 obl_lm_metrics <- obl_lm_preds %>%
                       dplyr::group_by(data, model) %>%
-                      yardstick::metrics(truth = OblAmt, estimate = .pred)
+                      yardstick::metrics(truth = logOblAmt, estimate = .pred)
 
 #for interpretation: rmse = Root Mean Squared Error (RMSE), rsq = R^2, mae = Mean Absolute Error (MAE)
 #make a df that displays RMSE and R^2 for each model and data (all dplyr functions)
