@@ -15,16 +15,20 @@ bibliography: ../references.bib
 csl: ../apa.csl
 ---
 # Supplemental Information
-This document represents additional information about the data and results.
+This document represents additional information about the data and results. The full code and detailed explanation of the figures can be found at the [GitHub repository](https://github.com/morganataylor/MorganTaylor-MADA-project).
 
 ## Exploratory analysis
-The processed data were then explored to characterize and summarize the relevant features in RStudio 4.1 with the following packages: here, tidyverse, skimr, summarytools, ggplot2, car, gtsummary, scales, cowplot, and table1. The supplementary files contain the code that generates the following results.
-
+The processed data were explored to characterize and summarize the relevant features, which can be found below.
 
 Table \@ref(tab:table1) reflects the results of the exploratory data analysis. Between February 2012 and November 2021, there were 446 disaster declarations for states and territories. Funds requested by states or territories for FEMA ranged from -\$855,200.3 to \$4,388,540,486, with an average of \$29,673,687, and FEMA funds obligated to the states and territories after reconciliation ranged from -\$855,200.3 to \$440,842,4297 with an average of \$29,744,109. 
 
 ```{r summarytable,  echo=FALSE, message = FALSE}
 readRDS("../../results/table1.rds")
+```
+
+Figure \@ref(fig:map1) shows the FEMA Regions by state.
+```{r map1,  fig.cap='FEMA Regions', echo=FALSE, message = FALSE}
+knitr::include_graphics("../../results/map1.png")
 ```
 
 
@@ -119,7 +123,7 @@ knitr::kable(resulttable, caption = 'ML model comparison for requested FEMA fund
 ```
 
 ```{r ML-model-comp-obl,  echo=FALSE}
-resulttable1=readRDS("../../results/ML-model-comp-obl.rds")
+resulttable1=readRDS("../../results/ML-model-comp-OA.rds")
 knitr::kable(resulttable1, caption = 'ML model comparison for obligated FEMA funding')
 ```
 

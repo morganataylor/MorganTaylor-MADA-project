@@ -945,7 +945,7 @@ lasso_RMSE <- lasso_res %>%
 lasso_RMSE
 
 #save combined table
-model_comp_file = here("results", "ML-model-comp.Rds")
+model_comp_file = here("results", "ML-model-comp-outlier.Rds")
 saveRDS(lasso_RMSE, file = model_comp_file)
 ```
 The LASSO model fit is almost identical to the Elastic Net model fit.

@@ -59,5 +59,5 @@ As the project has developed, I have a few thoughts I want to explain:
 
 * the doParallels package throws MANY errors, but if you re-run the code a second time, it always goes away
 * the manuscript is written for an emergency management journal -- therefore:
-  * statisical concepts are likely over-explained
+  * some statisical concepts are likely over-explained (e.g. RMSE)
   * I chose to exclude the MVR in the manuscript, as I thought it would be too confusing to non-biostiatisticans
