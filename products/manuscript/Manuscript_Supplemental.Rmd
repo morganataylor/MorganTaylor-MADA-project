@@ -72,7 +72,9 @@ Incident duration ranged from zero days to 660 days (or almost two years), as se
 knitr::include_graphics("../../results/funds-dur.png")
 ```
 
-Prior to fitting the data to machine learning models, standard simple and multivariable regression models were fitted using the tidymodels framework in RStudio 4.1. Both outcomes of interest were fitted, using incident duration as the primary predictor of interest. Figure \@ref(fig:req_MVR_bp) and \@ref(fig:obl_MVR_bp) show the significant variables fitted in the multivariable regression models for requested and obligated FEMA funds, respectively.
+## Modeling Analysis
+
+Prior to fitting the data to machine learning models, standard simple and multivariable regression models were fitted using the tidymodels framework in RStudio 4.1. Both outcomes of interest were fitted, using incident duration as the primary predictor of interest. Figure \@ref(fig:req_MVR_bp) and \@ref(fig:obl_MVR_bp) show the significant variables fitted in the multivariable regression models for requested and obligated FEMA funds, respectively. There are simply too many variables to be able to report all variables on one figure.
 
 ```{r req_MVR_bp,  fig.cap='Significant predictors in multivariate regression model for requested FEMA funds', echo=FALSE}
 knitr::include_graphics("../../results/req_MVR_bp.png")
@@ -82,7 +84,6 @@ knitr::include_graphics("../../results/req_MVR_bp.png")
 knitr::include_graphics("../../results/obl_MVR_bp.png")
 ```
 
-
 Table \@ref(tab:lm-eval) shows the comparisons of the models, using the root mean square error (RMSE) and r-squared statistics. The requested and obligated funding models performed almost identically. None of the models fit the data well, which suggests more sophisticated modeling practices are necessary to adequately characterize the data.
 
 ```{r lm-eval,  echo=FALSE, message = FALSE}
@@ -91,31 +92,50 @@ knitr::kable(resulttable2, caption = 'Linear model comparisons')
 ```
 
 
-## Full analysis
+## Machine Learning Models
 
-Three models were considered for the prediction analysis: decision tree, bagged tree, and random forest, and each were fit for both outcomes of interest (e.g. requested and obligated funds). Prior to fitting the models, the data were subset based on outcome of interest, and some feature engineering was performed. Due to the limited values in certain categories, the state variable was summarized into the ten FEMA regions and the least frequent disaster types were added to the "Other" category. The data were split such that 66.7% were used for training the models and the remaining 33.3% were used for testing the final chosen model, stratified by the incident type. Cross-validation was used for the decision tree and random forest models, using a five-fold, five-repeat resampling structure, also stratified by the incident type. The bagged tree model instead implemented a bootstrap resampling structure, repeated ten times, again stratified by the incident type. The models were then compared based on the root mean square error (RMSE), the standard metric for regression models. The analysis was completed in RStudio 4.1 with the following packages: here, tidyverse, tidymodels, skmir, broom.mixed, rpart.plot, vip, glmnet, doParallel, ranger, and baguette.
+The identified decision tree model for each outcome is illustrated by Figures  \@ref(fig:DT-plot-outlier) and  \@ref(fig:DT-plot-OA-outlier).
 
-The identified decision tree model for each outcome is illustrated by Figures  \@ref(fig:DT-plot) and  \@ref(fig:DT-plot-obl). Both outcomes identified the same decision point features: total number of federal agencies involved in the response, duration of the incident, state population, state counties, and whether the individual / housing assistance program was awarded.
-
-```{r DT-plot,  fig.cap='Selected decision tree for predicting requested FEMA funds', echo=FALSE}
-knitr::include_graphics("../../results/DT-plot.png")
+```{r DT-plot-outlier,  fig.cap='Selected decision tree for predicting requested FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/DT-plot-outlier.png")
 ```
 
-```{r DT-plot-obl,  fig.cap='Selected decision tree for predicting obligated FEMA funds', echo=FALSE}
-knitr::include_graphics("../../results/DT-plot-obl")
+```{r DT-plot-OA-outlier,  fig.cap='Selected decision tree for predicting obligated FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/DT-plot-OA-outlier.png")
 ```
 
-The most important variables in the identified random forest model for each outcome is illustrated by Figures  \@ref(fig:RF-plot) and  \@ref(fig:RF-plot-obl). Both outcomes identified the same important features: incident duration, total number of agencies involved, individual/housing assistance program awardance, and incident month. Interestingly, however, the obligated funds model includes days of the entire response as the fifth most important feature, whereas the requested funds model includes it as the eleventh most important feature. Unfortunately, the tidymodels framework does not support visualization of the bagged tree model.
+The most important variables in the identified random forest model for each outcome is illustrated by Figures  \@ref(fig:RF-plot-outlier) and  \@ref(fig:RF-plot-OA-outlier).
 
-```{r RF-plot,  fig.cap='20 most important variables for the random forest model for requested FEMA funds', echo=FALSE}
-knitr::include_graphics("../../results/RF-plot.png")
+```{r RF-plot-outlier,  fig.cap='20 most important variables for the random forest model for requested FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/RF-plot-outlier.png")
 ```
 
-```{r RF-plot-obl,  fig.cap='20 most important variables for the random forest model for obligated FEMA funds', echo=FALSE}
-knitr::include_graphics("../../results/RF-plot-obl")
+```{r RF-plot-OA-outlier,  fig.cap='20 most important variables for the random forest model for obligated FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/RF-plot-OA-outlier.png")
 ```
 
-Table \@ref(tab:ML-model-comp) shows the model comparisons for estimating requested FEMA funding, and Table \@ref(tab:ML-model-comp-obl) similarly shows the model comparisons for estimating obligated FEMA funding. In both outcomes, the bagged tree had the lowest RMSE; however, the standard error estimate of the RMSE was higher in the bagged tree models than for the other models.
+The most important variables in the identified elastic net model for each outcome is illustrated by Figures  \@ref(fig:EN-plot-outlier) and  \@ref(fig:EN-plot-OA-outlier).
+
+```{r EN-plot-outlier,  fig.cap='20 most important variables for the elastic net model for requested FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/EN-plot-outlier.png")
+```
+
+```{r EN-plot-OA-outlier,  fig.cap='20 most important variables for the elastic net model for obligated FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/EN-plot-OA-outlier.png")
+```
+
+The most important variables in the identified LASSO model for each outcome is illustrated by Figures  \@ref(fig:LASSO-plot-outlier) and  \@ref(fig:LASSO-plot-OA-outlier).
+
+```{r LASSO-plot-outlier,  fig.cap='20 most important variables for the LASSO model for requested FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/LASSO-plot-outlier.png")
+```
+
+```{r LASSO-plot-OA-outlier,  fig.cap='20 most important variables for the LASSO model for obligated FEMA funds', echo=FALSE}
+knitr::include_graphics("../../results/LASSO-plot-OA-outlier.png")
+```
+
+
+Table \@ref(tab:ML-model-comp) shows the model comparisons for estimating requested FEMA funding, and Table \@ref(tab:ML-model-comp-obl) similarly shows the model comparisons for estimating obligated FEMA funding.
 
 ```{r ML-model-comp,  echo=FALSE, message = FALSE}
 resulttable=readRDS("../../results/ML-model-comp.rds")
@@ -127,12 +147,32 @@ resulttable1=readRDS("../../results/ML-model-comp-OA.rds")
 knitr::kable(resulttable1, caption = 'ML model comparison for obligated FEMA funding')
 ```
 
-The bagged tree model was still chosen as the best model of the three, and it was fitted to the testing data sample. The RMSEs for the testing and training datasets were substantially different. Figure \@ref(fig:BT-pred-act-test) shows the predicted and actual requested funds values, and Figure \@ref(fig:BT-pred-act-test-obl) does the same for obligated FEMA funds. The supplementary information contains the code for the models as well as all diagnostic plots.
-```{r BT_pred_act_test,  fig.cap='Predicted vs actual requested FEMA funds for the bagged tree fit', echo=FALSE}
-knitr::include_graphics("../../results/BT-pred-act-test.png")
+Once the random forest was fit to the test data, the following diagnostic plots were created for each outcome.
+
+For Requested FEMA Funding:
+```{r RF-pred-act-test-outlier,  fig.cap='Actual vs predicted log(requested FEMA funds) for the random forest test model', echo=FALSE}
+knitr::include_graphics("../../results/RF-pred-act-test-outlier.png")
 ```
 
-```{r BT_pred_act_test-obl,  fig.cap='Predicted vs actual obligated FEMA funds for the bagged tree fit', echo=FALSE}
-knitr::include_graphics("../../results/BT-pred-act-test-obl.png")
+```{r RF-resid-test-outlier,  fig.cap='Requested FEMA funds residuals for the random forest test model', echo=FALSE}
+knitr::include_graphics("../../results/RF-resid-test-outlier.png")
+```
+
+```{r RF-pred-resid-test-outlier,  fig.cap='Residuals versus fitted values of the log(requested FEMA funds) for the random forest test model', echo=FALSE}
+knitr::include_graphics("../../results/RF-pred-resid-test-outlier.png")
+```
+
+For Obligated FEMA Funding:
+
+```{r RF-pred-act-test-OA-outlier,  fig.cap='Actual vs predicted log(obligated FEMA funds) for the random forest test model', echo=FALSE}
+knitr::include_graphics("../../results/RF-pred-act-test-outlier.png")
+```
+
+```{r RF-resid-test-OA-outlier,  fig.cap='Obligated FEMA funds residuals for the random forest test model', echo=FALSE}
+knitr::include_graphics("../../results/RF-resid-test-OA-outlier.png")
+```
+
+```{r RF-pred-resid-test-OA-outlier,  fig.cap='Residuals versus fitted values of the log(obligated FEMA funds) for the random forest test model', echo=FALSE}
+knitr::include_graphics("../../results/RF-pred-resid-test-OA-outlier.png")
 ```
 

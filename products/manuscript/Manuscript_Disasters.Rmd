@@ -166,12 +166,12 @@ knitr::kable(resulttable1, caption = 'Random Forest model comparison for test/tr
 ```
 
 
-Figure \@ref(fig:RF_pred_act_test_outlier) shows the predicted and actual requested funds values, and Figure \@ref(fig:RF_pred_act_test-OA-outlier) does the same for obligated FEMA funds. The supplementary information contains the code for the models as well as further diagnostic plots.
-```{r RF_pred_act_test_outlier,  fig.cap='Predicted vs actual requested FEMA funds for the random forest fit', echo=FALSE}
+Figure \@ref(fig:RF-pred-act-test-outlier) shows the predicted and actual requested funds values, and Figure \@ref(fig:RF-pred-act-test-OA-outlier) does the same for obligated FEMA funds. The supplementary information contains the code for the models as well as further diagnostic plots.
+```{r RF-pred-act-test-outlier,  fig.cap='Predicted vs actual requested FEMA funds for the random forest fit', echo=FALSE}
 knitr::include_graphics("../../results/RF-pred-act-test-outlier.png")
 ```
 
-```{r RF_pred_act_test-OA-outlier,  fig.cap='Predicted vs actual obligated FEMA funds for the random forest fit', echo=FALSE}
+```{r RF-pred-act-test-OA-outlier,  fig.cap='Predicted vs actual obligated FEMA funds for the random forest fit', echo=FALSE}
 knitr::include_graphics("../../results/RF-pred-act-test-OA-outlier.png")
 ```
 
